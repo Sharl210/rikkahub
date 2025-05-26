@@ -49,7 +49,9 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'schedule' && vars.SCHEDULED_SYNC_ENABLED == 'true')
 
-    permissions: write-all # 确保 GITHUB_TOKEN 有足够的权限来推送代码和标签
+    permissions:
+      contents: write
+      workflows: write
       
     outputs:
       sync_result: ${{ steps.report_sync_status.outputs.result }}
