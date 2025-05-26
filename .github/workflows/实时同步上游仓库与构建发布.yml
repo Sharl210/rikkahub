@@ -46,8 +46,6 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'schedule' && vars.SCHEDULED_SYNC_ENABLED == 'true')
 
-    # 将 permissions 设置为最低限度，因为我们主要依赖 PAT 进行推送
-    # 这里的 GITHUB_TOKEN 只需要读取仓库内容来执行 checkout
     permissions:
       contents: read # 仅读取权限，避免 GITHUB_TOKEN 尝试推送
 
@@ -56,17 +54,11 @@ jobs:
       sync_message: ${{ steps.report_sync_status.outputs.message }}
 
     steps:
-      - name: 检出当前 Fork (禁用 GITHUB_TOKEN，使用 PAT)
+      - name: 检出当前 Fork (使用 PAT)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 确保获取完整的提交历史，以便同步提交记录
-          # 禁用 actions/checkout 默认的 GITHUB_TOKEN 认证
+          fetch-depth: 0
           token: ${{ secrets.SYNC_PAT }} # 显式使用 PAT 进行 Checkout 和后续 Git 操作
-          # 确保 origin remote URL 使用 PAT
-          repository: ${{ github.repository }} # 使用当前仓库作为 Checkout 目标
-          # 确保将 PAT 嵌入到 URL 中，以便后续 Git 命令使用
-          # 这是 actions/checkout 内部处理的方式，但我们也可以手动配置
-          # 实际上，当 token 被提供时，actions/checkout 就会用它来设置 remote URL
 
       - name: 配置 Git 用户信息
         run: |
@@ -79,7 +71,7 @@ jobs:
       - name: 获取上游所有分支和标签的最新信息
         run: |
           echo "正在从上游获取最新信息..."
-          git fetch upstream --tags --force # --force 确保即使本地有同名标签，也会更新为上游最新
+          git fetch upstream --tags --force
           echo "获取上游信息完成。"
 
       - name: 获取 Fork 和上游的默认分支名
@@ -89,7 +81,7 @@ jobs:
           DEFAULT_UPSTREAM_BRANCH=$(git remote show upstream | grep 'HEAD branch' | sed 's/.*: //')
           if [ -z "$DEFAULT_UPSTREAM_BRANCH" ] || [ "$DEFAULT_UPSTREAM_BRANCH" = "(unknown)" ]; then
             echo "::warning::无法自动检测上游默认分支。将尝试使用 'master'。"
-            DEFAULT_UPSTREAM_BRANCH="master" # ！！！如果上游默认分支不是 'master' 或 'main'，请修改这里
+            DEFAULT_UPSTREAM_BRANCH="master"
           fi
           echo "fork_branch=$FORK_BRANCH" >> $GITHUB_OUTPUT
           echo "upstream_default_branch=$DEFAULT_UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
@@ -119,7 +111,7 @@ jobs:
           echo "上游分支 ($UPSTREAM_DEFAULT_BRANCH) HEAD SHA: $UPSTREAM_SHA"
           echo "共同祖先 (Merge Base) SHA: $MERGE_BASE_SHA"
 
-          SHOULD_PUSH_TAGS="false" # 默认不推送标签，除非特定条件满足
+          SHOULD_PUSH_TAGS="false"
 
           if [ "$UPSTREAM_SHA" != "$MERGE_BASE_SHA" ]; then
             echo "上游仓库 ($UPSTREAM_DEFAULT_BRANCH) 有新的提交是当前 Fork 分支 ($FORK_BRANCH) 所没有的。"
@@ -175,6 +167,7 @@ jobs:
 
           if [ "$SHOULD_PUSH_TAGS" = "true" ]; then
             echo "正在推送所有从上游获取的标签 (强制覆盖)..."
+            # actions/checkout 已经用 PAT 配置了 origin，所以直接 push 即可
             git push origin --tags --force || echo "::warning::标签推送失败，但同步操作本身（如果分支已同步）仍然视为基于其状态。"
             echo "标签推送完成。"
           fi
@@ -242,7 +235,6 @@ jobs:
   build_and_release:
     name: 构建并发布
     runs-on: ubuntu-latest
-    # Release 创建仍然使用内置 GITHUB_TOKEN，需要 write 权限
     permissions: write-all 
     needs: [sync_with_upstream]
     if: |
@@ -260,8 +252,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 获取完整历史，确保可以基于任何标签构建
-          # 此处 actions/checkout 默认使用 secrets.GITHUB_TOKEN 进行身份验证，这是正常的
+          fetch-depth: 0
 
       - name: 获取标签和 Release 信息 (或生成构建ID)
         id: get-release-info
@@ -324,13 +315,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: 添加 google-services.json
-        env:
-          STEP_GOOGLE_SERVICES_JSON: ${{ vars.GOOGLE_SERVICES_JSON }}
-        if: env.STEP_GOOGLE_SERVICES_JSON != ''
+      - name: 准备构建文件
+        # 仅当所有相关的 secrets/vars 都存在时才执行
+        if: |
+          secrets.KEY_BASE64 != '' &&
+          secrets.SIGNING_CONFIG != '' &&
+          vars.GOOGLE_SERVICES_JSON != '' # <--- 修改为 vars
         run: |
-          echo "$STEP_GOOGLE_SERVICES_JSON" > app/google-services.json
-          echo "google-services.json added."
+          # 解码base64编码的keystore文件
+          echo "${{ secrets.KEY_BASE64 }}" | base64 --decode > app/app.key
+          echo "app/app.key created."
+          
+          # 写入签名配置到local.properties (确保在项目根目录)
+          echo "${{ secrets.SIGNING_CONFIG }}" > local.properties
+          echo "local.properties created."
+          
+          # 写入Google Services配置 (从 vars 读取)
+          echo '${{ vars.GOOGLE_SERVICES_JSON }}' > app/google-services.json # <--- 修改为 vars
+          echo "app/google-services.json created."
+        env: # 确保这些 secrets/vars 在此步骤中可用
+          KEY_BASE64: ${{ secrets.KEY_BASE64 }}
+          SIGNING_CONFIG: ${{ secrets.SIGNING_CONFIG }}
+          GOOGLE_SERVICES_JSON: ${{ vars.GOOGLE_SERVICES_JSON }} # <--- 修改为 vars
 
       - name: 执行 Gradle 构建
         run: |
@@ -435,7 +441,7 @@ jobs:
             **Assets:**
             - `artifacts.zip`: 包含所有 Release APK (位于压缩包内的 'release' 文件夹中)。
             - 单个 APK 文件也已作为附件提供，可直接下载。
-            - APK均未签名，请自行签名。
+            - APK均已签名，无需自行签名。
           draft: ${{ steps.get-release-info.outputs.draft }}
           prerelease: ${{ steps.get-release-info.outputs.prerelease }}
         env:
