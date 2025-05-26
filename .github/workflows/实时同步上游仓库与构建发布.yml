@@ -49,9 +49,8 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'schedule' && vars.SCHEDULED_SYNC_ENABLED == 'true')
 
-    permissions:
-      contents: write 
-      workflows: write
+    permissions: write-all # 确保 GITHUB_TOKEN 有足够的权限来推送代码和标签
+      
     outputs:
       sync_result: ${{ steps.report_sync_status.outputs.result }}
       sync_message: ${{ steps.report_sync_status.outputs.message }}
@@ -61,6 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 确保获取完整的提交历史，以便同步提交记录
+          # actions/checkout 默认使用 secrets.GITHUB_TOKEN 进行身份验证
 
       - name: 配置 Git 用户信息
         run: |
@@ -130,7 +130,7 @@ jobs:
             # `git diff --check --quiet` 会在有冲突标记时返回非零退出码。
             if git diff --check --quiet; then
               echo "合并成功，没有冲突。"
-              git push origin "$FORK_BRANCH"
+              git push origin "$FORK_BRANCH" # 默认使用 GITHUB_TOKEN
               echo "推送到 origin/$FORK_BRANCH 完成。"
               echo "merge_status=success" >> $GITHUB_OUTPUT
               echo "merge_message=成功将上游新的提交合并到 Fork，并已推送。" >> $GITHUB_OUTPUT
@@ -182,7 +182,7 @@ jobs:
           # 标签同步逻辑
           if [ "$SHOULD_PUSH_TAGS" = "true" ]; then
             echo "正在推送所有从上游获取的标签 (强制覆盖)..."
-            git push origin --tags --force || echo "::warning::标签推送失败，但同步操作本身（如果分支已同步）仍然视为基于其状态。"
+            git push origin --tags --force # 默认使用 GITHUB_TOKEN
             echo "标签推送完成。"
           fi
           
@@ -250,9 +250,7 @@ jobs:
   build_and_release:
     name: 构建并发布
     runs-on: ubuntu-latest
-    permissions:
-      contents: write 
-      workflows: write
+    permissions: write-all # 确保 GITHUB_TOKEN 有足够的权限来创建 Release 和上传 Assets
     needs: [sync_with_upstream] # 依赖于同步作业
     # 条件：
     # - 当有 v 或 V 开头的标签推送到仓库时 (push event)
@@ -274,6 +272,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 获取完整历史，确保可以基于任何标签构建
+          # actions/checkout 默认使用 secrets.GITHUB_TOKEN 进行身份验证
 
       - name: 获取标签和 Release 信息 (或生成构建ID)
         id: get-release-info
@@ -453,4 +452,4 @@ jobs:
           draft: ${{ steps.get-release-info.outputs.draft }}
           prerelease: ${{ steps.get-release-info.outputs.prerelease }}
         env:
-          GITHUB_TOKEN: ${{ vars.WORKFLOW_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 已修改为默认的 GITHUB_TOKEN
