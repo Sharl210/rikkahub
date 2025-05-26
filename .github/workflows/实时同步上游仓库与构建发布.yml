@@ -320,8 +320,7 @@ jobs:
         if: |
           secrets.KEY_BASE64 != '' &&
           secrets.SIGNING_CONFIG != '' &&
-          vars.GOOGLE_SERVICES_JSON != '' # <--- 修改为 vars
-        run: |
+          vars.GOOGLE_SERVICES_JSON != '' 
           # 解码base64编码的keystore文件
           echo "${{ secrets.KEY_BASE64 }}" | base64 --decode > app/app.key
           echo "app/app.key created."
