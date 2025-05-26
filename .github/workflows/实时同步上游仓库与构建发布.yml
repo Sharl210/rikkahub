@@ -317,7 +317,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 准备构建文件
-        if: ${{ secrets.KEY_BASE64 != '' && secrets.SIGNING_CONFIG != '' && vars.GOOGLE_SERVICES_JSON != '' }}
+        if: ${{ secrets.KEY_BASE64 }} != '' && {{secrets.SIGNING_CONFIG}} != '' && {{vars.GOOGLE_SERVICES_JSON}} != ''
         env:
           KEY_BASE64_CONTENT: ${{ secrets.KEY_BASE64 }}
           SIGNING_CONFIG_CONTENT: ${{ secrets.SIGNING_CONFIG }}
