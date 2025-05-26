@@ -317,10 +317,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 准备构建文件
-        if: |
-          ${{ secrets.KEY_BASE64 != '' }} &&
-          ${{ secrets.SIGNING_CONFIG != '' }} &&
-          ${{ vars.GOOGLE_SERVICES_JSON != '' }}
+        if: ${{ secrets.KEY_BASE64 != '' && secrets.SIGNING_CONFIG != '' && vars.GOOGLE_SERVICES_JSON != '' }}
         env:
           KEY_BASE64_CONTENT: ${{ secrets.KEY_BASE64 }}
           SIGNING_CONFIG_CONTENT: ${{ secrets.SIGNING_CONFIG }}
@@ -328,15 +325,15 @@ jobs:
         run: |
           echo "Preparing build files..."
           # 解码base64编码的keystore文件
-          echo "${{ env.KEY_BASE64_CONTENT }}" | base64 --decode > app/app.key
+          echo "$KEY_BASE64_CONTENT" | base64 --decode > app/app.key
           echo "app/app.key created."
           
           # 写入签名配置到local.properties (确保在项目根目录)
-          echo "${{ env.SIGNING_CONFIG_CONTENT }}" > local.properties
+          echo "$SIGNING_CONFIG_CONTENT" > local.properties
           echo "local.properties created."
           
           # 写入Google Services配置 (从 vars 读取)
-          echo '${{ env.GOOGLE_SERVICES_JSON_CONTENT }}' > app/google-services.json
+          echo "$GOOGLE_SERVICES_JSON_CONTENT" > app/google-services.json
           echo "app/google-services.json created."
 
       - name: 执行 Gradle 构建
