@@ -324,7 +324,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: 添加 google-services.json (如果已配置 Secret)
+      - name: 添加 google-services.json
         env:
           STEP_GOOGLE_SERVICES_JSON: ${{ vars.GOOGLE_SERVICES_JSON }}
         if: env.STEP_GOOGLE_SERVICES_JSON != ''
