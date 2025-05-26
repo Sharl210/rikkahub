@@ -51,7 +51,7 @@ jobs:
 
     permissions:
       contents: write 
-      
+      workflows: write
     outputs:
       sync_result: ${{ steps.report_sync_status.outputs.result }}
       sync_message: ${{ steps.report_sync_status.outputs.message }}
