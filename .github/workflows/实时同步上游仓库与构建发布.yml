@@ -49,10 +49,14 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'schedule' && vars.SCHEDULED_SYNC_ENABLED == 'true')
 
+    # 由于 GITHUB_TOKEN 不支持 workflows: write，我们将使用 PAT 进行推送
+    # 这里只需要 GITHUB_TOKEN 的默认 contents: read 权限来检出仓库
+    # 如果你的 GitHub 版本较旧，甚至可能不需要明确声明 contents: write
+    # 但为了兼容性，可以保留 contents: write，它不会影响 PAT 的使用
     permissions:
-      contents: write
-      workflows: write
-      
+      contents: write # GITHUB_TOKEN 权限，用于检出仓库和一般操作
+      # 移除 workflows: write，因为它不被你的 GitHub 环境识别
+
     outputs:
       sync_result: ${{ steps.report_sync_status.outputs.result }}
       sync_message: ${{ steps.report_sync_status.outputs.message }}
@@ -62,7 +66,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # 确保获取完整的提交历史，以便同步提交记录
-          # actions/checkout 默认使用 secrets.GITHUB_TOKEN 进行身份验证
+          # actions/checkout 默认使用 GITHUB_TOKEN 进行身份验证
 
       - name: 配置 Git 用户信息
         run: |
@@ -122,17 +126,14 @@ jobs:
             echo "上游仓库 ($UPSTREAM_DEFAULT_BRANCH) 有新的提交是当前 Fork 分支 ($FORK_BRANCH) 所没有的。"
             echo "尝试将上游更改合并到本地 $FORK_BRANCH ..."
 
-            # 确保在正确的分支上操作 (checkout 步骤通常已完成，但再次确认无害)
-            # git checkout "$FORK_BRANCH"
-
-            # 尝试合并。使用 || true 允许脚本在合并冲突时继续执行，以便我们能捕获并处理冲突。
             git merge --no-ff "$UPSTREAM_TRACKING_REF" || true
 
-            # 检查合并是否成功 (没有冲突)。
-            # `git diff --check --quiet` 会在有冲突标记时返回非零退出码。
             if git diff --check --quiet; then
               echo "合并成功，没有冲突。"
-              git push origin "$FORK_BRANCH" # 默认使用 GITHUB_TOKEN
+              # 使用 PAT 推送代码
+              # ！！！重要：请将 YOUR_GITHUB_USERNAME 替换为你的 GitHub 用户名 ！！！
+              # ！！！重要：请确认 github.com/Sharl210/rikkahub 是你的 Fork 仓库地址 ！！！
+              git push https://YOUR_GITHUB_USERNAME:${{ secrets.SYNC_PAT }}@github.com/Sharl210/rikkahub "$FORK_BRANCH"
               echo "推送到 origin/$FORK_BRANCH 完成。"
               echo "merge_status=success" >> $GITHUB_OUTPUT
               echo "merge_message=成功将上游新的提交合并到 Fork，并已推送。" >> $GITHUB_OUTPUT
@@ -155,27 +156,23 @@ jobs:
             echo "上游仓库 ($UPSTREAM_DEFAULT_BRANCH) 相对于你的 Fork 分支 ($FORK_BRANCH) 在共同祖先之后没有新的提交。"
             
             if [ "$LOCAL_SHA" = "$MERGE_BASE_SHA" ]; then
-              # Fork 也没有超出共同祖先的新提交，说明它们在共同祖先这一点上是同步的。
-              # 且上游没有新提交，所以它们实际上是一致的（或者说 Fork 没有领先）。
               echo "Fork 分支与上游分支在共同祖先处一致，且上游无新提交。无需代码同步。"
               if [ "${{ github.event_name }}" = "schedule" ]; then
                 echo "merge_status=skipped_no_new_commits" >> $GITHUB_OUTPUT
-                echo "merge_message=Fork 分支已与上游一致 (基于共同祖先判断)，自动同步跳过构建。" >> $GITHUB_OUTPUT
+                echo "message=Fork 分支已与上游一致 (基于共同祖先判断)，自动同步跳过构建。" >> $GITHUB_OUTPUT
               else # workflow_dispatch (手动触发)
                 echo "merge_status=no_new_commits_proceed_build" >> $GITHUB_OUTPUT
-                echo "merge_message=Fork 分支已与上游一致 (基于共同祖先判断)，但因手动触发，将继续构建和发布。将同步标签。" >> $GITHUB_OUTPUT
+                echo "message=Fork 分支已与上游一致 (基于共同祖先判断)，但因手动触发，将继续构建和发布。将同步标签。" >> $GITHUB_OUTPUT
                 SHOULD_PUSH_TAGS="true"
               fi
             else
-              # Fork 在共同祖先之后有新的提交 (LOCAL_SHA != MERGE_BASE_SHA)，而上游没有。
-              # 这意味着 Fork 领先于上游，或者有本地未被上游合并的修改。
               echo "Fork 分支 ($FORK_BRANCH) 包含上游 ($UPSTREAM_DEFAULT_BRANCH) 没有的提交。无需从上游拉取代码。"
               if [ "${{ github.event_name }}" = "schedule" ]; then
                 echo "merge_status=skipped_fork_ahead" >> $GITHUB_OUTPUT
-                echo "merge_message=Fork 分支领先于上游或有本地提交，且上游无新提交。自动同步跳过构建。" >> $GITHUB_OUTPUT
+                echo "message=Fork 分支领先于上游或有本地提交，且上游无新提交。自动同步跳过构建。" >> $GITHUB_OUTPUT
               else # workflow_dispatch (手动触发)
                 echo "merge_status=fork_ahead_proceed_build" >> $GITHUB_OUTPUT
-                echo "merge_message=Fork 分支领先于上游或有本地提交，且上游无新提交。因手动触发，将继续构建和发布。将同步标签。" >> $GITHUB_OUTPUT
+                echo "message=Fork 分支领先于上游或有本地提交，且上游无新提交。因手动触发，将继续构建和发布。将同步标签。" >> $GITHUB_OUTPUT
                 SHOULD_PUSH_TAGS="true"
               fi
             fi
@@ -184,7 +181,10 @@ jobs:
           # 标签同步逻辑
           if [ "$SHOULD_PUSH_TAGS" = "true" ]; then
             echo "正在推送所有从上游获取的标签 (强制覆盖)..."
-            git push origin --tags --force # 默认使用 GITHUB_TOKEN
+            # 使用 PAT 推送标签
+            # ！！！重要：请将 YOUR_GITHUB_USERNAME 替换为你的 GitHub 用户名 ！！！
+            # ！！！重要：请确认 github.com/Sharl210/rikkahub 是你的 Fork 仓库地址 ！！！
+            git push https://YOUR_GITHUB_USERNAME:${{ secrets.SYNC_PAT }}@github.com/Sharl210/rikkahub --tags --force || echo "::warning::标签推送失败，但同步操作本身（如果分支已同步）仍然视为基于其状态。"
             echo "标签推送完成。"
           fi
           
@@ -192,7 +192,7 @@ jobs:
           if ! grep -q "merge_status=" $GITHUB_OUTPUT; then
              echo "::error::perform_merge 未能正确设置 merge_status 输出。"
              echo "merge_status=failed_other" >> $GITHUB_OUTPUT # 提供一个默认的失败状态
-             echo "merge_message=内部错误：perform_merge 逻辑未能设置状态。" >> $GITHUB_OUTPUT
+             echo "message=内部错误：perform_merge 逻辑未能设置状态。" >> $GITHUB_OUTPUT
              exit 1
           fi
           exit 0
@@ -252,7 +252,8 @@ jobs:
   build_and_release:
     name: 构建并发布
     runs-on: ubuntu-latest
-    permissions: write-all # 确保 GITHUB_TOKEN 有足够的权限来创建 Release 和上传 Assets
+    # GITHUB_TOKEN 用于创建 Release，需要 write 权限
+    permissions: write-all 
     needs: [sync_with_upstream] # 依赖于同步作业
     # 条件：
     # - 当有 v 或 V 开头的标签推送到仓库时 (push event)
@@ -454,4 +455,4 @@ jobs:
           draft: ${{ steps.get-release-info.outputs.draft }}
           prerelease: ${{ steps.get-release-info.outputs.prerelease }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 已修改为默认的 GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Release 创建仍然使用内置 GITHUB_TOKEN，因为这通常是支持的
