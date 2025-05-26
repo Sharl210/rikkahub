@@ -51,7 +51,7 @@ jobs:
 
     permissions:
       contents: write 
-      workflows: write
+      actions: write
     outputs:
       sync_result: ${{ steps.report_sync_status.outputs.result }}
       sync_message: ${{ steps.report_sync_status.outputs.message }}
@@ -252,6 +252,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write 
+      actions: write
     needs: [sync_with_upstream] # 依赖于同步作业
     # 条件：
     # - 当有 v 或 V 开头的标签推送到仓库时 (push event)
