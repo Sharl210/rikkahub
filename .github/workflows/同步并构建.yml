@@ -1,0 +1,455 @@
+name: 实时同步上游仓库与构建发布
+
+on:
+  schedule:
+    # ！！！重要配置！！！
+    # 设置轮询频率。例如，每15分钟检查一次上游更新。
+    # 注意：过于频繁的轮询会消耗更多 Actions 分钟数。
+    # GitHub Actions cron 最低频率是每5分钟 ('*/5 * * * *')。
+    # 推荐频率：'*/15 * * * *' (每15分钟) 或 '*/30 * * * *' (每30分钟)
+    - cron: '*/120 * * * *' # 每120分钟检查一次
+  workflow_dispatch: # 允许手动从 Actions 标签页触发，并指定 Release 信息
+    inputs:
+      tag_name:
+        description: '要创建的 Release 标签名 (例如 v1.0.0, custom-build-1, 2024-05-27-alpha)。此标签将指向当前同步后的默认分支 HEAD。'
+        required: true
+        type: string
+        default: 'v1.0.0' # ！！！重要：此值不会自动递增，请手动修改为下一个版本号（例如 v1.0.1, v2.0.0 等）
+      release_title:
+        description: 'Release 的显示标题 (例如 v1.0.0)。如果留空，将使用标签名。'
+        required: false
+        type: string
+      release_body:
+        description: 'Release 的描述内容。'
+        required: false
+        type: string
+        default: '此版本是手动触发同步并发布的。'
+      prerelease:
+        description: '是否标记为预发布版本？'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: '是否创建为草稿发布？'
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - '[vV]*' # 当有新的 v 或 V 开头标签推送到仓库时，直接触发构建和发布
+
+jobs:
+  sync_with_upstream:
+    name: 检查并同步上游
+    runs-on: ubuntu-latest
+    # 条件：
+    # - 手动触发 (workflow_dispatch) 时运行
+    # - 定时触发 (schedule) 且仓库变量 SCHEDULED_SYNC_ENABLED (如果存在并设为 'true') 时运行
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && vars.SCHEDULED_SYNC_ENABLED == 'true')
+
+    permissions:
+      contents: write 
+      
+    outputs:
+      sync_result: ${{ steps.report_sync_status.outputs.result }}
+      sync_message: ${{ steps.report_sync_status.outputs.message }}
+
+    steps:
+      - name: 检出当前 Fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 确保获取完整的提交历史，以便同步提交记录
+
+      - name: 配置 Git 用户信息
+        run: |
+          git config --global user.name "${{ github.actor }}[bot]"
+          git config --global user.email "${{ github.actor_id }}+${{ github.actor }}[bot]@users.noreply.github.com"
+
+      - name: 添加上游仓库为远程
+        run: git remote add upstream https://github.com/rikkahub/rikkahub.git || echo "Upstream remote 'upstream' already exists."
+
+      - name: 获取上游所有分支和标签的最新信息
+        run: |
+          echo "正在从上游获取最新信息..."
+          git fetch upstream --tags --force # --force 确保即使本地有同名标签，也会更新为上游最新
+          echo "获取上游信息完成。"
+
+      - name: 获取 Fork 和上游的默认分支名
+        id: branch_info
+        run: |
+          FORK_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          DEFAULT_UPSTREAM_BRANCH=$(git remote show upstream | grep 'HEAD branch' | sed 's/.*: //')
+          if [ -z "$DEFAULT_UPSTREAM_BRANCH" ] || [ "$DEFAULT_UPSTREAM_BRANCH" = "(unknown)" ]; then
+            echo "::warning::无法自动检测上游默认分支。将尝试使用 'master'。"
+            DEFAULT_UPSTREAM_BRANCH="master" # ！！！如果上游默认分支不是 'master' 或 'main'，请修改这里
+          fi
+          echo "fork_branch=$FORK_BRANCH" >> $GITHUB_OUTPUT
+          echo "upstream_default_branch=$DEFAULT_UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
+          echo "Fork 默认分支: $FORK_BRANCH"
+          echo "检测到上游默认分支为: $DEFAULT_UPSTREAM_BRANCH"
+
+      - name: 执行合并操作与标签同步 (基于 merge-base 判断)
+        id: perform_merge
+        run: |
+          FORK_BRANCH="${{ steps.branch_info.outputs.fork_branch }}"
+          UPSTREAM_DEFAULT_BRANCH="${{ steps.branch_info.outputs.upstream_default_branch }}"
+          UPSTREAM_TRACKING_REF="upstream/$UPSTREAM_DEFAULT_BRANCH"
+          FORK_REF="refs/heads/$FORK_BRANCH"
+
+          LOCAL_SHA=$(git rev-parse "$FORK_REF"^{commit} 2>/dev/null)
+          UPSTREAM_SHA=$(git rev-parse "$UPSTREAM_TRACKING_REF"^{commit} 2>/dev/null)
+          MERGE_BASE_SHA=$(git merge-base "$FORK_REF" "$UPSTREAM_TRACKING_REF" 2>/dev/null)
+
+          if [ -z "$LOCAL_SHA" ] || [ -z "$UPSTREAM_SHA" ] || [ -z "$MERGE_BASE_SHA" ]; then
+            echo "::error::无法获取分支 SHA 或合并基础。无法执行同步。"
+            echo "merge_status=failed_sha_error" >> $GITHUB_OUTPUT
+            echo "merge_message=无法获取分支 SHA 或合并基础，请检查配置或仓库状态。" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "Fork 分支 ($FORK_BRANCH) HEAD SHA: $LOCAL_SHA"
+          echo "上游分支 ($UPSTREAM_DEFAULT_BRANCH) HEAD SHA: $UPSTREAM_SHA"
+          echo "共同祖先 (Merge Base) SHA: $MERGE_BASE_SHA"
+
+          SHOULD_PUSH_TAGS="false" # 默认不推送标签，除非特定条件满足
+
+          # 判断上游是否有新的提交 (即上游的 HEAD 是否在其与 Fork 的共同祖先之后有新的提交)
+          if [ "$UPSTREAM_SHA" != "$MERGE_BASE_SHA" ]; then
+            echo "上游仓库 ($UPSTREAM_DEFAULT_BRANCH) 有新的提交是当前 Fork 分支 ($FORK_BRANCH) 所没有的。"
+            echo "尝试将上游更改合并到本地 $FORK_BRANCH ..."
+
+            # 确保在正确的分支上操作 (checkout 步骤通常已完成，但再次确认无害)
+            # git checkout "$FORK_BRANCH"
+
+            # 尝试合并。使用 || true 允许脚本在合并冲突时继续执行，以便我们能捕获并处理冲突。
+            git merge --no-ff "$UPSTREAM_TRACKING_REF" || true
+
+            # 检查合并是否成功 (没有冲突)。
+            # `git diff --check --quiet` 会在有冲突标记时返回非零退出码。
+            if git diff --check --quiet; then
+              echo "合并成功，没有冲突。"
+              git push origin "$FORK_BRANCH"
+              echo "推送到 origin/$FORK_BRANCH 完成。"
+              echo "merge_status=success" >> $GITHUB_OUTPUT
+              echo "merge_message=成功将上游新的提交合并到 Fork，并已推送。" >> $GITHUB_OUTPUT
+              SHOULD_PUSH_TAGS="true" # 代码成功合并后，允许同步标签
+            else
+              echo "::error::合并失败！检测到合并冲突。"
+              echo "冲突文件列表:"
+              git diff --name-only --diff-filter=U # 列出所有冲突文件
+              git merge --abort # 放弃合并操作，恢复到合并前的状态
+              echo "已放弃合并操作。本次同步将跳过代码合并。"
+              echo "merge_status=conflict" >> $GITHUB_OUTPUT
+              echo "merge_message=检测到合并冲突，已跳过代码同步。请手动解决冲突后再次触发。" >> $GITHUB_OUTPUT
+              # 即使代码合并冲突，如果手动触发，仍然考虑同步标签
+              if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                  SHOULD_PUSH_TAGS="true"
+              fi
+            fi
+          else
+            # 上游没有新的提交 (UPSTREAM_SHA == MERGE_BASE_SHA)
+            echo "上游仓库 ($UPSTREAM_DEFAULT_BRANCH) 相对于你的 Fork 分支 ($FORK_BRANCH) 在共同祖先之后没有新的提交。"
+            
+            if [ "$LOCAL_SHA" = "$MERGE_BASE_SHA" ]; then
+              # Fork 也没有超出共同祖先的新提交，说明它们在共同祖先这一点上是同步的。
+              # 且上游没有新提交，所以它们实际上是一致的（或者说 Fork 没有领先）。
+              echo "Fork 分支与上游分支在共同祖先处一致，且上游无新提交。无需代码同步。"
+              if [ "${{ github.event_name }}" = "schedule" ]; then
+                echo "merge_status=skipped_no_new_commits" >> $GITHUB_OUTPUT
+                echo "merge_message=Fork 分支已与上游一致 (基于共同祖先判断)，自动同步跳过构建。" >> $GITHUB_OUTPUT
+              else # workflow_dispatch (手动触发)
+                echo "merge_status=no_new_commits_proceed_build" >> $GITHUB_OUTPUT
+                echo "merge_message=Fork 分支已与上游一致 (基于共同祖先判断)，但因手动触发，将继续构建和发布。将同步标签。" >> $GITHUB_OUTPUT
+                SHOULD_PUSH_TAGS="true"
+              fi
+            else
+              # Fork 在共同祖先之后有新的提交 (LOCAL_SHA != MERGE_BASE_SHA)，而上游没有。
+              # 这意味着 Fork 领先于上游，或者有本地未被上游合并的修改。
+              echo "Fork 分支 ($FORK_BRANCH) 包含上游 ($UPSTREAM_DEFAULT_BRANCH) 没有的提交。无需从上游拉取代码。"
+              if [ "${{ github.event_name }}" = "schedule" ]; then
+                echo "merge_status=skipped_fork_ahead" >> $GITHUB_OUTPUT
+                echo "merge_message=Fork 分支领先于上游或有本地提交，且上游无新提交。自动同步跳过构建。" >> $GITHUB_OUTPUT
+              else # workflow_dispatch (手动触发)
+                echo "merge_status=fork_ahead_proceed_build" >> $GITHUB_OUTPUT
+                echo "merge_message=Fork 分支领先于上游或有本地提交，且上游无新提交。因手动触发，将继续构建和发布。将同步标签。" >> $GITHUB_OUTPUT
+                SHOULD_PUSH_TAGS="true"
+              fi
+            fi
+          fi
+
+          # 标签同步逻辑
+          if [ "$SHOULD_PUSH_TAGS" = "true" ]; then
+            echo "正在推送所有从上游获取的标签 (强制覆盖)..."
+            git push origin --tags --force || echo "::warning::标签推送失败，但同步操作本身（如果分支已同步）仍然视为基于其状态。"
+            echo "标签推送完成。"
+          fi
+          
+          # 验证 merge_status 是否被正确设置
+          if ! grep -q "merge_status=" $GITHUB_OUTPUT; then
+             echo "::error::perform_merge 未能正确设置 merge_status 输出。"
+             echo "merge_status=failed_other" >> $GITHUB_OUTPUT # 提供一个默认的失败状态
+             echo "merge_message=内部错误：perform_merge 逻辑未能设置状态。" >> $GITHUB_OUTPUT
+             exit 1
+          fi
+          exit 0
+
+      - name: 报告同步状态
+        id: report_sync_status
+        run: |
+          MERGE_STATUS="${{ steps.perform_merge.outputs.merge_status }}"
+          MERGE_MESSAGE="${{ steps.perform_merge.outputs.merge_message }}"
+
+          case "$MERGE_STATUS" in
+            "success")
+              echo "::notice::同步完成：$MERGE_MESSAGE"
+              echo "result=success" >> $GITHUB_OUTPUT
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              ;;
+            "skipped_no_new_commits")
+              echo "::notice::同步跳过 (上游无新提交，Fork与上游一致)：$MERGE_MESSAGE"
+              echo "result=skipped_no_new_commits" >> $GITHUB_OUTPUT
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              ;;
+            "no_new_commits_proceed_build")
+              echo "::notice::同步检查 (上游无新提交，Fork与上游一致，手动触发将继续构建和发布)：$MERGE_MESSAGE"
+              echo "result=no_new_commits_proceed_build" >> $GITHUB_OUTPUT
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              ;;
+            "skipped_fork_ahead")
+              echo "::notice::同步跳过 (Fork 领先或有本地提交，上游无新提交)：$MERGE_MESSAGE"
+              echo "result=skipped_fork_ahead" >> $GITHUB_OUTPUT
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              ;;
+            "fork_ahead_proceed_build")
+              echo "::notice::同步检查 (Fork 领先或有本地提交，上游无新提交，手动触发将继续构建和发布)：$MERGE_MESSAGE"
+              echo "result=fork_ahead_proceed_build" >> $GITHUB_OUTPUT
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              ;;
+            "conflict")
+              echo "::error::同步失败 (有冲突)：$MERGE_MESSAGE" 
+              echo "result=skipped_conflict" >> $GITHUB_OUTPUT # 作业会失败，但 result 用于 if 判断
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              exit 1 # 冲突时直接让作业失败
+              ;;
+            "failed_sha_error")
+              echo "::error::同步失败 (SHA 获取错误)：$MERGE_MESSAGE"
+              echo "result=failed_sha_error" >> $GITHUB_OUTPUT
+              echo "message=$MERGE_MESSAGE" >> $GITHUB_OUTPUT
+              exit 1 # SHA 获取错误时让作业失败
+              ;;
+            "failed_other"|*) # 捕获其他未知或未正确设置的状态
+              echo "::error::同步失败：${MERGE_MESSAGE:-'未知错误或状态未正确传递。'}"
+              echo "result=failed_other" >> $GITHUB_OUTPUT
+              echo "message=${MERGE_MESSAGE:-'未知错误或状态未正确传递。'}" >> $GITHUB_OUTPUT
+              exit 1 # 其他失败情况也让作业失败
+              ;;
+          esac
+
+  build_and_release:
+    name: 构建并发布
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+    needs: [sync_with_upstream] # 依赖于同步作业
+    # 条件：
+    # - 当有 v 或 V 开头的标签推送到仓库时 (push event)
+    # - 或者，手动触发 (workflow_dispatch) 且上游同步成功 或 上游无新提交但仍需构建 或 Fork领先但仍需构建时
+    # - 或者，定时触发 (schedule) 且上游同步成功检测到新提交时
+    if: |
+      (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V'))) ||
+      (
+        github.event_name == 'workflow_dispatch' &&
+        (
+          needs.sync_with_upstream.outputs.sync_result == 'success' ||
+          needs.sync_with_upstream.outputs.sync_result == 'no_new_commits_proceed_build' ||
+          needs.sync_with_upstream.outputs.sync_result == 'fork_ahead_proceed_build'
+        )
+      ) ||
+      (github.event_name == 'schedule' && needs.sync_with_upstream.outputs.sync_result == 'success')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史，确保可以基于任何标签构建
+
+      - name: 获取标签和 Release 信息 (或生成构建ID)
+        id: get-release-info
+        shell: bash
+        run: |
+          TAG_NAME=""
+          RELEASE_TITLE=""
+          RELEASE_BODY=""
+          PRERELEASE="false"
+          DRAFT="false"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+            RELEASE_TITLE="${{ github.event.inputs.release_title }}"
+            RELEASE_BODY="${{ github.event.inputs.release_body }}"
+            PRERELEASE="${{ github.event.inputs.prerelease }}"
+            DRAFT="${{ github.event.inputs.draft }}"
+            echo "从手动触发输入中获取标签: $TAG_NAME"
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            RELEASE_TITLE="Release $TAG_NAME"
+            RELEASE_BODY="Release of version $TAG_NAME."
+            if [[ "$TAG_NAME" == *'-'* ]]; then # 如果标签包含连字符，例如 v1.0.0-beta，则标记为预发布
+              PRERELEASE="true"
+            fi
+            echo "从推送事件中获取标签: $TAG_NAME"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            # 自动模式：使用北京时间戳作为标签，并标记为预发布版本
+            TAG_NAME="auto-$(TZ='Asia/Shanghai' date +'%Y%m%d-%H%M%S')" # 确保时间戳为北京时间
+            RELEASE_TITLE="自动构建 ${TAG_NAME}"
+            RELEASE_BODY="此版本是自动同步上游更新后构建的。构建时间：$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+            PRERELEASE="true" # 自动构建标记为预发布版本，便于分组
+            DRAFT="false" # 不设为草稿，直接发布
+            echo "为自动构建生成标签: $TAG_NAME"
+          else
+            echo "::error::无法确定 Release 标签或构建标识符。"
+            exit 1
+          fi
+
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_title=${RELEASE_TITLE:-$TAG_NAME}" >> $GITHUB_OUTPUT # 如果标题为空，使用标签名
+          echo "release_body=${RELEASE_BODY}" >> $GITHUB_OUTPUT
+          echo "prerelease=${PRERELEASE}" >> $GITHUB_OUTPUT
+          echo "draft=${DRAFT}" >> $GITHUB_OUTPUT
+
+          echo "最终确定的标签/构建ID: $(cat $GITHUB_OUTPUT | grep tag= | cut -d'=' -f2)"
+
+      - name: 设置 JDK 环境
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 配置 Gradle 缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 添加 google-services.json (如果已配置 Secret)
+        env:
+          STEP_GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        if: env.STEP_GOOGLE_SERVICES_JSON != ''
+        run: |
+          echo "$STEP_GOOGLE_SERVICES_JSON" > app/google-services.json
+          echo "google-services.json added."
+
+      - name: 执行 Gradle 构建
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+          echo "Gradle build completed."
+          echo "列出 app/build/outputs/apk/ 目录内容 (用于调试APK路径):"
+          if [ -d "app/build/outputs/apk" ]; then
+            ls -lR app/build/outputs/apk
+          else
+            echo "::error::app/build/outputs/apk 目录未找到。构建可能未成功生成APK。"
+            exit 1
+          fi
+
+      - name: 记录构建时间
+        run: |
+          echo "BUILD_TIME=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "Build time recorded: ${{ env.BUILD_TIME }}"
+
+      - name: 准备构建产物 (单个 APKs 和 artifacts.zip)
+        id: prepare_artifacts
+        if: success() # 只有前面的步骤成功才执行
+        shell: bash
+        run: |
+          mkdir -p release_assets
+          TEMP_APK_COLLECTION_DIR="temp_apks_for_zip_structure"
+          mkdir -p "$TEMP_APK_COLLECTION_DIR/release"
+
+          echo "正在查找所有 *release.apk 文件并进行处理..."
+          
+          find app/build/outputs/apk -name '*release.apk' -type f -print0 | while IFS= read -r -d $'\0' apk_file; do
+            echo "找到并处理 APK: $apk_file"
+            cp "$apk_file" release_assets/ # 复制 APK 到 release_assets 供 Release 使用
+            cp "$apk_file" "$TEMP_APK_COLLECTION_DIR/release/" # 复制 APK 到临时目录供打包 artifacts.zip
+          done
+
+          COPIED_APK_COUNT=$(find release_assets -maxdepth 1 -name '*.apk' -type f 2>/dev/null | wc -l)
+          
+          if [ "$COPIED_APK_COUNT" -eq 0 ]; then
+            echo "::error::在 app/build/outputs/apk/ 目录下未找到任何 *release.apk 文件，或未能成功复制到 release_assets 目录。"
+            echo "请检查 Gradle 构建日志。下面是 app/build/outputs/apk/ (如果存在) 的内容:"
+            if [ -d "app/build/outputs/apk" ]; then
+              ls -lR app/build/outputs/apk
+            else
+              echo "目录 app/build/outputs/apk 未找到。"
+            fi
+            echo "下面是 release_assets/ (如果存在) 的内容:"
+            if [ -d "release_assets" ]; then
+              ls -lR release_assets
+            else
+              echo "目录 release_assets 未创建或为空。"
+            fi
+            exit 1
+          fi
+          echo "已成功复制 $COPIED_APK_COUNT 个 APK 文件到 release_assets/ (扁平结构)。"
+
+          echo "正在创建 artifacts.zip..."
+          ZIPPED_APK_COUNT=$(find "$TEMP_APK_COLLECTION_DIR/release" -maxdepth 1 -name '*.apk' -type f 2>/dev/null | wc -l)
+          if [ "$ZIPPED_APK_COUNT" -eq 0 ]; then
+             echo "::error::临时目录 $TEMP_APK_COLLECTION_DIR/release 为空或不包含APK文件，无法创建 artifacts.zip。"
+             exit 1
+          fi
+
+          # 创建 artifacts.zip 并将其直接放在 release_assets 目录下
+          (cd "$TEMP_APK_COLLECTION_DIR" && zip -r "${{ github.workspace }}/release_assets/artifacts.zip" "release")
+          
+          if [ ! -f "${{ github.workspace }}/release_assets/artifacts.zip" ]; then
+            echo "::error::artifacts.zip 创建失败。"
+            exit 1
+          fi
+          echo "已创建 release_assets/artifacts.zip，内部包含 'release' 文件夹和 $ZIPPED_APK_COUNT 个 APK(s)。"
+          
+          rm -rf "$TEMP_APK_COLLECTION_DIR" # 清理临时目录
+
+          echo "最终的 release_assets 目录内容 (用于 GitHub Release):"
+          ls -lR release_assets/
+          echo "assets_path_for_release=release_assets" >> $GITHUB_OUTPUT # 用于 Release 的路径
+          echo "artifact_zip_path=release_assets/artifacts.zip" >> $GITHUB_OUTPUT # 单独指定 artifacts.zip 的路径
+
+      - name: 上传构建产物 (Workflow Artifact - 仅 artifacts.zip)
+        uses: actions/upload-artifact@v4
+        if: success() && steps.prepare_artifacts.outputs.artifact_zip_path != ''
+        with:
+          name: artifacts-${{ steps.get-release-info.outputs.tag }} # 可以自定义 artifact 名称
+          path: ${{ steps.prepare_artifacts.outputs.artifact_zip_path }} # 只上传 artifacts.zip
+          if-no-files-found: error
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: success() && steps.prepare_artifacts.outputs.assets_path_for_release != ''
+        with:
+          files: ${{ steps.prepare_artifacts.outputs.assets_path_for_release }}/* # 上传 release_assets 目录中的所有文件 (APKs + artifacts.zip)
+          tag_name: ${{ steps.get-release-info.outputs.tag }}
+          name: ${{ steps.get-release-info.outputs.release_title }}
+          body: |
+            ${{ steps.get-release-info.outputs.release_body }}
+            
+            **构建信息：**
+            - 编译于：${{ env.BUILD_TIME }}
+            - 触发方式：${{ github.event_name == 'schedule' && '自动同步' || github.event_name == 'workflow_dispatch' && '手动触发' || '标签推送' }}
+            - 同步状态：${{ needs.sync_with_upstream.outputs.sync_message || '直接构建（标签推送）' }}
+
+            **Assets:**
+            - `artifacts.zip`: 包含所有 Release APK (位于压缩包内的 'release' 文件夹中)。
+            - 单个 APK 文件也已作为附件提供，可直接下载。
+            - APK均未签名，请自行签名。
+          draft: ${{ steps.get-release-info.outputs.draft }}
+          prerelease: ${{ steps.get-release-info.outputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
