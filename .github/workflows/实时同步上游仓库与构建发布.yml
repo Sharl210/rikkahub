@@ -339,7 +339,7 @@ jobs:
 
       - name: 添加 google-services.json (如果已配置 Secret)
         env:
-          STEP_GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          STEP_GOOGLE_SERVICES_JSON: ${{ vars.GOOGLE_SERVICES_JSON }}
         if: env.STEP_GOOGLE_SERVICES_JSON != ''
         run: |
           echo "$STEP_GOOGLE_SERVICES_JSON" > app/google-services.json
@@ -453,4 +453,4 @@ jobs:
           draft: ${{ steps.get-release-info.outputs.draft }}
           prerelease: ${{ steps.get-release-info.outputs.prerelease }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ vars.WORKFLOW_TOKEN }}
