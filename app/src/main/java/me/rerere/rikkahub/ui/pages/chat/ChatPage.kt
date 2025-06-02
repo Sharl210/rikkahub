@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,8 +23,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DrawerState
@@ -91,6 +94,7 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.ui.components.chat.AssistantPicker
 import me.rerere.rikkahub.ui.components.chat.ChatInput
 import me.rerere.rikkahub.ui.components.chat.ChatMessage
@@ -187,8 +191,8 @@ fun ChatPage(id: Uuid, vm: ChatVM = koinViewModel()) {
                         }
                         if (inputState.isEditing()) {
                             vm.handleMessageEdit(
-                                inputState.messageContent,
-                                inputState.editingMessage
+                                parts = inputState.messageContent,
+                                messageId = inputState.editingMessage!!,
                             )
                         } else {
                             vm.handleMessageSend(inputState.messageContent)
@@ -244,6 +248,19 @@ fun ChatPage(id: Uuid, vm: ChatVM = koinViewModel()) {
                 },
                 onDelete = {
                     vm.deleteMessage(it)
+                },
+                onUpdateMessage = { newNode ->
+                    vm.updateConversation(
+                        conversation.copy(
+                        messageNodes = conversation.messageNodes.map { node ->
+                            if (node.id == newNode.id) {
+                                newNode
+                            } else {
+                                node
+                            }
+                        }
+                    ))
+                    vm.saveConversationAsync()
                 }
             )
         }
@@ -265,6 +282,7 @@ private fun ChatList(
     onEdit: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
+    onUpdateMessage: (MessageNode) -> Unit = {},
 ) {
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -273,13 +291,13 @@ private fun ChatList(
     var isRecentScroll by remember { mutableStateOf(false) }
 
     var isAtBottom by remember { mutableStateOf(false) }
-    val scrollToBottom = { state.requestScrollToItem(conversation.messages.lastIndex + 5) }
+    val scrollToBottom = { state.requestScrollToItem(conversation.messageNodes.lastIndex + 5) }
     fun List<LazyListItemInfo>.isAtBottom(): Boolean {
         val lastItem = lastOrNull() ?: return false
         if (lastItem.key == LoadingIndicatorKey || lastItem.key == ScrollBottomKey || lastItem.key == TokenUsageItemKey) {
             return true
         }
-        return lastItem.key == conversation.messages.lastOrNull()?.id && (lastItem.offset + lastItem.size <= state.layoutInfo.viewportEndOffset + lastItem.size * 0.1 + 32)
+        return lastItem.key == conversation.messageNodes.lastOrNull()?.id && (lastItem.offset + lastItem.size <= state.layoutInfo.viewportEndOffset + lastItem.size * 0.1 + 32)
     }
     LaunchedEffect(state, conversation) {
         isAtBottom = state.layoutInfo.visibleItemsInfo.isAtBottom()
@@ -296,10 +314,10 @@ private fun ChatList(
             .fillMaxSize(),
     ) {
         // 自动滚动到底部
-        LaunchedEffect(loading, conversation.messages, viewPortSize, loading) {
+        LaunchedEffect(loading, conversation.messageNodes, viewPortSize, loading) {
             if (!state.isScrollInProgress && state.canScrollForward && loading) {
                 if (state.layoutInfo.visibleItemsInfo.isAtBottom()) {
-                    state.requestScrollToItem(conversation.messages.lastIndex + 10)
+                    state.requestScrollToItem(conversation.messageNodes.lastIndex + 10)
                 }
             }
         }
@@ -324,24 +342,24 @@ private fun ChatList(
             modifier = Modifier.fillMaxSize()
         ) {
             itemsIndexed(
-                conversation.messages,
-                key = { index, item -> item.id }) { index, message ->
+                items = conversation.messageNodes,
+                key = { index, item -> item.id }) { index, node ->
                 Column {
                     ListSelectableItem(
-                        key = message.id,
+                        key = node.id,
                         onSelectChange = {
-                            if (!selectedItems.contains(message.id)) {
-                                selectedItems.add(message.id)
+                            if (!selectedItems.contains(node.id)) {
+                                selectedItems.add(node.id)
                             } else {
-                                selectedItems.remove(message.id)
+                                selectedItems.remove(node.id)
                             }
                         },
                         selectedKeys = selectedItems,
-                        enabled = selecting && message.isValidToShowActions(),
+                        enabled = selecting && node.currentMessage.isValidToShowActions(),
                     ) {
                         // Determine if the current message is fully loaded
-                        val isLastMessage = index == conversation.messages.lastIndex
-                        val isAssistantMessage = message.role == MessageRole.ASSISTANT
+                        val isLastMessage = index == conversation.messageNodes.lastIndex
+                        val isAssistantMessage = node.role == MessageRole.ASSISTANT
                         // The message is considered fully loaded if:
                         // 1. It's not the last assistant message (i.e., it's a historical message).
                         // 2. Or, it IS the last assistant message, AND the global 'loading' (generation job) is false.
@@ -353,27 +371,30 @@ private fun ChatList(
                         }
 
                         ChatMessage(
-                            message = message,
+                            node = node,
                             showIcon = settings.displaySetting.showModelIcon,
-                            model = message.modelId?.let { settings.findModelById(it) },
+                            model = node.currentMessage.modelId?.let { settings.findModelById(it) },
                             isFullyLoaded = isMessageFullyLoaded, // Pass the new parameter
                             onRegenerate = {
-                                onRegenerate(message)
+                                onRegenerate(node.currentMessage)
                             },
                             onEdit = {
-                                onEdit(message)
+                                onEdit(node.currentMessage)
                             },
                             onFork = {
-                                onForkMessage(message)
+                                onForkMessage(node.currentMessage)
                             },
                             onDelete = {
-                                onDelete(message)
+                                onDelete(node.currentMessage)
                             },
                             onShare = {
                                 selecting = true
                                 selectedItems.clear()
-                                selectedItems.addAll(conversation.messages.map { it.id }
-                                    .subList(0, conversation.messages.indexOf(message) + 1))
+                                selectedItems.addAll(conversation.messageNodes.map { it.id }
+                                    .subList(0, conversation.messageNodes.indexOf(node) + 1))
+                            },
+                            onUpdate = {
+                                onUpdateMessage(it)
                             }
                         )
                     }
@@ -406,10 +427,10 @@ private fun ChatList(
             // Combined Token and Context Usage Item
             item(ContextUsageItemKey) {
                 // 当设置允许显示统计信息，并且聊天记录不为空时才显示
-                if (settings.displaySetting.showTokenUsage && conversation.messages.isNotEmpty()) {
+                if (settings.displaySetting.showTokenUsage && conversation.messageNodes.isNotEmpty()) {
                     val configuredContextSize = settings.getCurrentAssistant().contextMessageSize
                     val effectiveMessagesAfterTruncation =
-                        conversation.messages.size - conversation.truncateIndex.coerceAtLeast(0)
+                        conversation.messageNodes.size - conversation.truncateIndex.coerceAtLeast(0)
                     val actualContextMessageCount =
                         minOf(effectiveMessagesAfterTruncation, configuredContextSize)
 
@@ -468,7 +489,7 @@ private fun ChatList(
                 onClick = {
                     selecting = false
                     val messages =
-                        conversation.messages.filter { it.id in selectedItems && it.isValidToShowActions() }
+                        conversation.messageNodes.filter { it.id in selectedItems && it.currentMessage.isValidToShowActions() }
                     if (messages.isNotEmpty()) {
                         showExportSheet = true
                     }
@@ -486,7 +507,8 @@ private fun ChatList(
                 selectedItems.clear()
             },
             conversation = conversation,
-            selectedMessages = conversation.messages.filter { it.id in selectedItems }
+            selectedMessages = conversation.messageNodes.filter { it.id in selectedItems }
+                .map { it.currentMessage }
         )
 
         // 滚动到底部按钮
@@ -619,7 +641,7 @@ private fun TopBar(
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
             Surface(
                 onClick = {
-                    if (conversation.messages.isNotEmpty()) {
+                    if (conversation.messageNodes.isNotEmpty()) {
                         titleState.open(conversation.title)
                     } else {
                         toaster.show(editTitleWarning, type = ToastType.Warning)
@@ -842,7 +864,8 @@ private fun UpdateCard(vm: ChatVM) {
                     )
                     MarkdownBlock(
                         content = info.changelog,
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.heightIn(max = 400.dp)
                     )
                 }
             }
@@ -870,14 +893,16 @@ private fun UpdateCard(vm: ChatVM) {
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = Instant.parse(info.publishedAt).toJavaInstant().toLocalDateTime()
-                            .toString(),
+                        text = Instant.parse(info.publishedAt).toJavaInstant().toLocalDateTime(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                     MarkdownBlock(
                         content = info.changelog,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                            .verticalScroll(rememberScrollState()),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     info.downloads.fastForEach { downloadItem ->

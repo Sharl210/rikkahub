@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,6 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
@@ -78,6 +82,8 @@ import androidx.compose.ui.util.fastForEachIndexed
 import com.composables.icons.lucide.BookDashed
 import com.composables.icons.lucide.BookHeart
 import com.composables.icons.lucide.ChevronDown
+import com.composables.icons.lucide.ChevronLeft
+import com.composables.icons.lucide.ChevronRight
 import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.CircleStop
 import com.composables.icons.lucide.Copy
@@ -107,6 +113,7 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.highlight.HighlightText
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
@@ -127,48 +134,53 @@ import kotlin.time.DurationUnit
 
 @Composable
 fun ChatMessage(
-    message: UIMessage,
+    node: MessageNode,
     modifier: Modifier = Modifier,
     showIcon: Boolean = true,
     model: Model? = null,
-    isFullyLoaded: Boolean, // New parameter
+    isFullyLoaded: Boolean,
     onFork: () -> Unit,
     onRegenerate: () -> Unit,
     onEdit: () -> Unit,
     onShare: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onUpdate: (MessageNode) -> Unit
 ) {
+    val message = node.messages[node.selectIndex]
     Column(
         modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(), // Add this to the root Column of ChatMessage
+            .fillMaxWidth(), // Add this to the root Column of ChatMessage
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        ModelIcon(showIcon, message, model)
+        ModelIcon(
+            showIcon = showIcon,
+            message = message,
+            model = model
+        )
         MessagePartsBlock(
-            message.role,
-            message.parts,
-            message.annotations,
+            role = message.role,
+            parts = message.parts,
+            annotations = message.annotations,
         )
         AnimatedVisibility(
             visible = message.isValidToShowActions() && isFullyLoaded,
             enter = slideInVertically { it / 2 } + fadeIn(),
             exit = slideOutVertically { it / 2 } + fadeOut()
         ) {
-            // Wrap Actions content in its own Column to ensure it's a distinct layout block
-            // that AnimatedVisibility can properly manage.
             Column(
-                modifier = Modifier.animateContentSize() // Also animate size changes within Actions
+                modifier = Modifier.animateContentSize()
             ) {
-                Actions( // Actions is a ColumnScope extension, so it adds its children here
+                Actions(
                     message = message,
                     model = model,
                     onRegenerate = onRegenerate,
                     onEdit = onEdit,
                     onFork = onFork,
                     onShare = onShare,
-                    onDelete = onDelete
+                    onDelete = onDelete,
+                    node = node,
+                    onUpdate = onUpdate
                 )
             }
         }
@@ -202,17 +214,22 @@ private fun ModelIcon(
 private fun ColumnScope.Actions(
     message: UIMessage,
     model: Model?,
+    node: MessageNode,
     onFork: () -> Unit,
     onRegenerate: () -> Unit,
     onEdit: () -> Unit,
     onShare: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onUpdate: (MessageNode) -> Unit,
 ) {
     val context = LocalContext.current
     var showInformation by remember { mutableStateOf(false) }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
+        MessageNodePagerButtons(node, onUpdate)
+
         Icon(
             Lucide.Copy, stringResource(R.string.copy), modifier = Modifier
                 .clip(CircleShape)
@@ -360,6 +377,65 @@ private fun ColumnScope.Actions(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MessageNodePagerButtons(
+    node: MessageNode,
+    onUpdate: (MessageNode) -> Unit
+) {
+    if (node.messages.size > 1) {
+        Icon(
+            imageVector = Lucide.ChevronLeft,
+            contentDescription = "Prev",
+            modifier = Modifier
+                .clip(CircleShape)
+                .alpha( if (node.selectIndex == 0) 0.5f else 1f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = LocalIndication.current,
+                    onClick = {
+                        if (node.selectIndex > 0) {
+                            onUpdate(
+                                node.copy(
+                                    selectIndex = node.selectIndex - 1
+                                )
+                            )
+                        }
+                    }
+                )
+                .padding(8.dp)
+                .size(16.dp)
+        )
+
+        Text(
+            text = "${node.selectIndex + 1}/${node.messages.size}",
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        Icon(
+            imageVector = Lucide.ChevronRight,
+            contentDescription = "Next",
+            modifier = Modifier
+                .clip(CircleShape)
+                .alpha( if (node.selectIndex == node.messages.lastIndex) 0.5f else 1f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = LocalIndication.current,
+                    onClick = {
+                        if (node.selectIndex < node.messages.lastIndex) {
+                            onUpdate(
+                                node.copy(
+                                    selectIndex = node.selectIndex + 1
+                                )
+                            )
+                        }
+                    }
+                )
+                .padding(8.dp)
+                .size(16.dp),
+        )
     }
 }
 
