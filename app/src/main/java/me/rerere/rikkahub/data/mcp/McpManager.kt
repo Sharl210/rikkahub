@@ -1,16 +1,10 @@
 package me.rerere.rikkahub.data.mcp
 
 import android.util.Log
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.sse.SSE
-import io.ktor.serialization.kotlinx.json.json
 import io.modelcontextprotocol.kotlin.sdk.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.Implementation
 import io.modelcontextprotocol.kotlin.sdk.Tool
 import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.client.WebSocketClientTransport
 import io.modelcontextprotocol.kotlin.sdk.shared.RequestOptions
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +24,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.mcp.transport.SseClientTransport
 import me.rerere.rikkahub.utils.checkDifferent
+import okhttp3.OkHttpClient
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
@@ -37,15 +32,9 @@ private const val TAG = "McpManager"
 
 class McpManager(
     private val settingsStore: SettingsStore,
-    private val appScope: AppScope
+    private val appScope: AppScope,
+    private val okHttpClient: OkHttpClient,
 ) {
-    private val httpClient = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json(McpJson)
-        }
-        install(SSE)
-    }
-
     private val clients: MutableMap<McpServerConfig, Client> = mutableMapOf()
     val syncingStatus = MutableStateFlow<Map<Uuid, McpStatus>>(mapOf())
 
@@ -101,12 +90,14 @@ class McpManager(
         val tool = tools.find { it.name == toolName }
             ?: return JsonPrimitive("Failed to execute tool, because no such tool")
         val client =
-            clients.entries.find { it.key.commonOptions.tools.any { it.name == toolName } }
+            clients.entries.find { it.key.commonOptions.tools.any { it.name == toolName } }?.value
         if (client == null) return JsonPrimitive("Failed to execute tool, because no such mcp client for the tool")
+        val config = clients.entries.first { it.value == client }.key
         Log.i(TAG, "callTool: $toolName / $args")
 
         val result = withTimeout(15.seconds) {
-            client.value.callTool(
+            if(client.transport == null) client.connect(getTransport(config))
+            client.callTool(
                 request = CallToolRequest(
                     name = tool.name,
                     arguments = args,
@@ -121,23 +112,22 @@ class McpManager(
         return McpJson.encodeToJsonElement(result.content)
     }
 
+    private fun getTransport(config: McpServerConfig): SseClientTransport =when (config) {
+        is McpServerConfig.SseTransportServer -> {
+            SseClientTransport(
+                urlString = config.url,
+                client = okHttpClient,
+            )
+        }
+
+        is McpServerConfig.WebSocketServer -> {
+            error("WebSocket is not support!")
+        }
+    }
+
     suspend fun addClient(config: McpServerConfig) {
         this.removeClient(config) // Remove first
-        val transport = when (config) {
-            is McpServerConfig.SseTransportServer -> {
-                SseClientTransport(
-                    urlString = config.url,
-                    client = httpClient,
-                )
-            }
-
-            is McpServerConfig.WebSocketServer -> {
-                WebSocketClientTransport(
-                    urlString = config.url,
-                    client = httpClient,
-                )
-            }
-        }
+        val transport = getTransport(config)
         val client = Client(
             clientInfo = Implementation(
                 name = config.commonOptions.name,
