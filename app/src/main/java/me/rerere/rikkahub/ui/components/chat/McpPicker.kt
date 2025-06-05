@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -34,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastFilter
+import androidx.compose.ui.util.fastSumBy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Check
 import com.composables.icons.lucide.CircleAlert
@@ -46,6 +49,8 @@ import me.rerere.rikkahub.data.mcp.McpManager
 import me.rerere.rikkahub.data.mcp.McpServerConfig
 import me.rerere.rikkahub.data.mcp.McpStatus
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.ui.components.ui.Tag
+import me.rerere.rikkahub.ui.components.ui.TagType
 import org.koin.compose.koinInject
 
 @Composable
@@ -58,17 +63,32 @@ fun McpPickerButton(
     var showMcpPicker by remember { mutableStateOf(false) }
     val status by mcpManager.syncingStatus.collectAsStateWithLifecycle()
     val loading = status.values.any { it == McpStatus.Connecting }
-    IconButton(
-        onClick = {
-            showMcpPicker = true
-        },
-        modifier = Modifier
+    BadgedBox(
+        badge = {
+            val enabledServers = servers.fastFilter {
+                it.commonOptions.enable
+            }
+            if (enabledServers.isNotEmpty()) {
+                Badge(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(text = enabledServers.size.toString())
+                }
+            }
+        }
     ) {
-        Box {
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-            } else {
-                Icon(Lucide.Terminal, null)
+        IconButton(
+            onClick = {
+                showMcpPicker = true
+            },
+            modifier = Modifier
+        ) {
+            Box {
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                } else {
+                    Icon(Lucide.Terminal, null)
+                }
             }
         }
     }
@@ -160,20 +180,24 @@ fun McpPicker(
                             text = server.commonOptions.name,
                             style = MaterialTheme.typography.titleLarge,
                         )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = when (status) {
-                                    is McpStatus.Idle -> "Idle"
-                                    is McpStatus.Connecting -> "Connecting"
-                                    is McpStatus.Connected -> "Connected"
-                                    is McpStatus.Error -> "Error: ${(status as McpStatus.Error).message}"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = LocalContentColor.current.copy(alpha = 0.8f)
-                            )
+                        Text(
+                            text = when (status) {
+                                is McpStatus.Idle -> "Idle"
+                                is McpStatus.Connecting -> "Connecting"
+                                is McpStatus.Connected -> "Connected"
+                                is McpStatus.Error -> "Error: ${(status as McpStatus.Error).message}"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = LocalContentColor.current.copy(alpha = 0.8f)
+                        )
+                        if (status == McpStatus.Connected) {
+                            val tools = server.commonOptions.tools
+                            val enabledTools = tools.fastFilter { it.enable }
+                            Tag(
+                                type = TagType.INFO
+                            ) {
+                                Text("${enabledTools.size}/${tools.size} tools")
+                            }
                         }
                     }
                     Switch(
