@@ -115,8 +115,8 @@ class ChatVM(
                 settingsStore.updateAssistant(conversation.assistantId)
             } else {
                 // 新建对话, 并添加预设消息
-                settingsStore.settingsFlowRaw.first()
-                val assistant = settings.value.getCurrentAssistant()
+                val currentSettings = settingsStore.settingsFlowRaw.first()
+                val assistant = currentSettings.getCurrentAssistant()
                 this@ChatVM._conversation.value =
                     this@ChatVM._conversation.value.updateCurrentMessages(assistant.presetMessages)
             }
@@ -281,6 +281,7 @@ class ChatVM(
     private suspend fun handleMessageComplete(messageRange: ClosedRange<Int>? = null) {
         val model = currentChatModel.value ?: return
         runCatching {
+            updateConversation(conversation.value.copy(chatSuggestions = emptyList())) // reset suggestions
             if (!model.abilities.contains(ModelAbility.TOOL)) {
                 if (enableWebSearch.value || mcpManager.getAllAvailableTools()
                         .isNotEmpty() || settings.value.getCurrentAssistant().enableMemory
@@ -441,7 +442,7 @@ class ChatVM(
                 Log.i(TAG, "generateSuggestion: ${result.choices[0]}")
                 saveConversation(
                     _conversation.value.copy(
-                        chatSuggestions = suggestions,
+                        chatSuggestions = suggestions.take(10),
                     )
                 )
             }.onFailure {
