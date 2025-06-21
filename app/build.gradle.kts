@@ -185,6 +185,9 @@ dependencies {
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.paging.compose)
 
+    // WebDav
+    implementation(libs.dav4jvm)
+
     // Apache Commons Text
     implementation(libs.commons.text)
 
