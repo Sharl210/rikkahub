@@ -20,8 +20,8 @@ android {
     applicationId = "me.rerere.rikkahub"
     minSdk = 26
     targetSdk = 36
-    versionCode = 63
-    versionName = "0.9.8"
+    versionCode = 64
+    versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -187,7 +187,9 @@ dependencies {
   implementation(libs.androidx.paging.compose)
 
   // WebDav
-  implementation(libs.dav4jvm)
+  implementation(libs.dav4jvm) {
+    exclude(group = "org.ogce", module = "xpp3")
+  }
 
   // Apache Commons Text
   implementation(libs.commons.text)
