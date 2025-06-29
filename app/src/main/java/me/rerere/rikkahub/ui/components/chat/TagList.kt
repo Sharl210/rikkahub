@@ -2,17 +2,16 @@ package me.rerere.rikkahub.ui.components.chat
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -28,49 +27,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.X
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.model.Tag
-import me.rerere.rikkahub.ui.components.ui.Tag as TagComponent
-import me.rerere.rikkahub.ui.components.ui.TagType
 import kotlin.uuid.Uuid
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-private fun TagsPreview() {
-    var tags by remember {
-        mutableStateOf(
-            listOf(
-                Tag(id = Uuid.random(), name = "标签1"),
-                Tag(id = Uuid.random(), name = "标签2"),
-                Tag(id = Uuid.random(), name = "标签3")
-            )
-        )
-    }
-    var value by remember { mutableStateOf(tags.map { it.id }) }
-    Box(Modifier.safeContentPadding()) {
-        TagsInput(
-            value = tags.map { it.id },
-            tags = tags,
-            onValueChange = {},
-            onUpdateTags = {
-                tags = it
-            }
-        )
-    }
-}
 
 @Composable
 fun TagsInput(
     value: List<Uuid>,
     tags: List<Tag>,
     modifier: Modifier = Modifier,
-    onValueChange: (List<Uuid>) -> Unit,
-    onUpdateTags: (List<Tag>) -> Unit,
+    onValueChange: (value: List<Uuid>, tags: List<Tag>) -> Unit,
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -85,25 +56,22 @@ fun TagsInput(
     ) {
         // 显示已选择的tags
         selectedTags.forEach { tag ->
-            InputChip(
-                onClick = {},
-                label = {
-                    Text(tag.name)
-                },
-                selected = false,
-                trailingIcon = {
-                    Icon(
-                        imageVector = Lucide.X,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clickable {
-                                onValueChange(value.filter { it != tag.id })
-                            },
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            )
+            InputChip(onClick = {}, label = {
+                Text(tag.name)
+            }, selected = false, trailingIcon = {
+                Icon(
+                    imageVector = Lucide.X,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable {
+                            onValueChange(
+                                value.filter { it != tag.id }, tags
+                            )
+                        },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            })
         }
 
         // 添加按钮
@@ -112,8 +80,7 @@ fun TagsInput(
             tonalElevation = 2.dp,
             modifier = Modifier
                 .clip(CircleShape)
-                .clickable { showAddDialog = true }
-        ) {
+                .clickable { showAddDialog = true }) {
             Icon(
                 Lucide.Plus,
                 contentDescription = stringResource(R.string.add),
@@ -128,53 +95,114 @@ fun TagsInput(
     // 添加tag对话框
     if (showAddDialog) {
         var tagName by remember { mutableStateOf("") }
+        var showError by remember { mutableStateOf(false) }
 
-        AlertDialog(
-            onDismissRequest = {
-                showAddDialog = false
-                tagName = ""
-            },
-            title = {
-                Text(stringResource(R.string.tag_input_dialog_title))
-            },
-            text = {
+        // 获取未选择的标签
+        val unselectedTags = tags.filter { tag -> !value.contains(tag.id) }
+
+        AlertDialog(onDismissRequest = {
+            showAddDialog = false
+            tagName = ""
+            showError = false
+        }, title = {
+            Text(stringResource(R.string.tag_input_dialog_title))
+        }, text = {
+            Column {
+                // 显示现有标签列表（如果有未选择的标签）
+                if (unselectedTags.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.tag_input_dialog_existing_tags),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        unselectedTags.forEach { tag ->
+                            InputChip(
+                                onClick = {
+                                    onValueChange(value + tag.id, tags)
+                                    showAddDialog = false
+                                    tagName = ""
+                                    showError = false
+                                }, label = { Text(tag.name) }, selected = false
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = stringResource(R.string.tag_input_dialog_create_new),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // 输入新标签名称
                 OutlinedTextField(
                     value = tagName,
-                    onValueChange = { tagName = it },
+                    onValueChange = {
+                        tagName = it
+                        showError = false
+                    },
                     label = { Text(stringResource(R.string.tag_input_dialog_label)) },
                     placeholder = { Text(stringResource(R.string.tag_input_dialog_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    singleLine = true,
+                    isError = showError
                 )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (tagName.isNotBlank()) {
-                            val newTag = Tag(id = Uuid.random(), name = tagName.trim())
-                            // 添加新tag到tags列表
-                            onUpdateTags(tags + newTag)
-                            // 将新tag添加到选中列表
-                            onValueChange(value + newTag.id)
-                            showAddDialog = false
-                            tagName = ""
-                        }
-                    },
-                    enabled = tagName.isNotBlank()
-                ) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showAddDialog = false
-                        tagName = ""
-                    }
-                ) {
-                    Text(stringResource(R.string.cancel))
+
+                // 显示错误信息
+                if (showError) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.tag_input_dialog_tag_exists),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
-        )
+        }, confirmButton = {
+            TextButton(
+                onClick = {
+                    if (tagName.isNotBlank()) {
+                        val trimmedName = tagName.trim()
+                        // 检查是否已存在同名标签
+                        val existingTag =
+                            tags.find { it.name.equals(trimmedName, ignoreCase = true) }
+                        if (existingTag != null) {
+                            // 如果存在同名标签，显示错误信息
+                            showError = true
+                        } else {
+                            // 创建新标签
+                            val newTag = Tag(id = Uuid.random(), name = trimmedName)
+                            onValueChange(value + newTag.id, tags + newTag)
+                            showAddDialog = false
+                            tagName = ""
+                            showError = false
+                        }
+                    }
+                }, enabled = tagName.isNotBlank()
+            ) {
+                Text(stringResource(R.string.confirm))
+            }
+        }, dismissButton = {
+            TextButton(
+                onClick = {
+                    showAddDialog = false
+                    tagName = ""
+                    showError = false
+                }) {
+                Text(stringResource(R.string.cancel))
+            }
+        })
     }
 }

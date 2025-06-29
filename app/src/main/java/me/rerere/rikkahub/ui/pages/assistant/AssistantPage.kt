@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +75,7 @@ import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import kotlin.uuid.Uuid
 
 @Composable
 fun AssistantPage(vm: AssistantVM = koinViewModel()) {
@@ -81,6 +84,21 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     vm.addAssistant(it)
   }
   val navController = LocalNavController.current
+
+  // 标签过滤状态
+  var selectedTagIds by remember { mutableStateOf(emptySet<Uuid>()) }
+
+  // 根据选中的标签过滤助手
+  val filteredAssistants = remember(settings.assistants, selectedTagIds) {
+    if (selectedTagIds.isEmpty()) {
+      settings.assistants
+    } else {
+      settings.assistants.filter { assistant ->
+        assistant.tags.any { tagId -> tagId in selectedTagIds }
+      }
+    }
+  }
+
   Scaffold(
     topBar = {
       TopAppBar(
@@ -103,11 +121,24 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     }
   ) {
     val lazyListState = rememberLazyListState()
+    val isFiltering = selectedTagIds.isNotEmpty()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-      val newAssistants = settings.assistants.toMutableList().apply {
-        add(to.index, removeAt(from.index))
+      // 只有在没有过滤时才允许重排序
+      if (!isFiltering) {
+        // 需要考虑标签过滤器可能占用的位置
+        val hasTagFilter = settings.assistantTags.isNotEmpty()
+        val offset = if (hasTagFilter) 1 else 0
+
+        val fromIndex = from.index - offset
+        val toIndex = to.index - offset
+
+        if (fromIndex >= 0 && toIndex >= 0 && fromIndex < settings.assistants.size && toIndex < settings.assistants.size) {
+          val newAssistants = settings.assistants.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+          }
+          vm.updateSettings(settings.copy(assistants = newAssistants))
+        }
       }
-      vm.updateSettings(settings.copy(assistants = newAssistants))
     }
     val haptic = LocalHapticFeedback.current
     LazyColumn(
@@ -116,7 +147,36 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
       verticalArrangement = Arrangement.spacedBy(8.dp),
       state = lazyListState
     ) {
-      items(settings.assistants, key = { assistant -> assistant.id }) { assistant ->
+      // 标签过滤器
+      if (settings.assistantTags.isNotEmpty()) {
+        item("tag_filter") {
+          Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            LazyRow(
+              horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              items(settings.assistantTags, key = { tag -> tag.id }) { tag ->
+                FilterChip(
+                  onClick = {
+                    selectedTagIds = if (tag.id in selectedTagIds) {
+                      selectedTagIds - tag.id
+                    } else {
+                      selectedTagIds + tag.id
+                    }
+                  },
+                  label = { Text(tag.name) },
+                  selected = tag.id in selectedTagIds,
+                  shape = RoundedCornerShape(50),
+                )
+              }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+          }
+        }
+      }
+
+      items(filteredAssistants, key = { assistant -> assistant.id }) { assistant ->
         ReorderableItem(
           state = reorderableState,
           key = assistant.id
@@ -135,21 +195,24 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
               vm.removeAssistant(assistant)
             },
             modifier = Modifier
-              .scale(if (isDragging) 0.95f else 1f)
-              .animateItem(),
+                .scale(if (isDragging) 0.95f else 1f)
+                .animateItem(),
             dragHandle = {
-              Icon(
-                imageVector = Lucide.GripHorizontal,
-                contentDescription = null,
-                modifier = Modifier.longPressDraggableHandle(
-                  onDragStarted = {
-                    haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
-                  },
-                  onDragStopped = {
-                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                  }
+              // 只有在没有过滤时才显示拖拽手柄
+              if (!isFiltering) {
+                Icon(
+                  imageVector = Lucide.GripHorizontal,
+                  contentDescription = null,
+                  modifier = Modifier.longPressDraggableHandle(
+                    onDragStarted = {
+                      haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                    },
+                    onDragStopped = {
+                      haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                    }
+                  )
                 )
-              )
+              }
             }
           )
         }
@@ -175,15 +238,15 @@ private fun AssistantCreationSheet(
     ) {
       Column(
         modifier = Modifier
-          .fillMaxWidth()
-          .height(300.dp)
-          .padding(horizontal = 16.dp, vertical = 32.dp),
+            .fillMaxWidth()
+            .height(300.dp)
+            .padding(horizontal = 16.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
       ) {
         Column(
           modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f),
+              .fillMaxWidth()
+              .weight(1f),
           verticalArrangement = Arrangement.spacedBy(12.dp),
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -279,7 +342,7 @@ private fun AssistantItem(
       }
 
       // Tags
-      if(assistant.tags.isNotEmpty()) {
+      if (assistant.tags.isNotEmpty()) {
         FlowRow(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -359,8 +422,8 @@ private fun AssistantItem(
             Lucide.Trash2,
             stringResource(R.string.assistant_page_delete),
             modifier = Modifier
-              .padding(end = 4.dp)
-              .size(18.dp)
+                .padding(end = 4.dp)
+                .size(18.dp)
           )
           Text(stringResource(R.string.assistant_page_delete))
         }
@@ -374,8 +437,8 @@ private fun AssistantItem(
             Lucide.Pencil,
             stringResource(R.string.edit),
             modifier = Modifier
-              .padding(end = 4.dp)
-              .size(18.dp)
+                .padding(end = 4.dp)
+                .size(18.dp)
           )
           Text(stringResource(R.string.edit))
         }
