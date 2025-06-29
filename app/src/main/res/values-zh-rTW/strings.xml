@@ -344,6 +344,8 @@
   <string name="setting_provider_page_vertex_ai">Vertex AI</string>
   <string name="setting_provider_page_location">位置（例如 us-central1）</string>
   <string name="setting_provider_page_project_id">專案 ID</string>
+  <string name="setting_provider_page_basic_settings">基本設定</string>
+  <string name="setting_provider_page_advanced_settings">進階設定</string>
 
   <!-- Chat Message Tool Calls -->
   <string name="chat_message_tool_create_memory">創建了記憶</string>
@@ -358,6 +360,8 @@
   <string name="delete">刪除</string>
   <string name="setting_display_page_show_message_jumper_title">消息導航按鈕</string>
   <string name="setting_display_page_show_message_jumper_desc">在捲動聊天列表時，在右側顯示快速跳轉按鈕</string>
+  <string name="setting_display_page_font_size_title">聊天字體大小</string>
+  <string name="setting_display_page_font_size_preview">這是一個**示例**的聊天文本</string>
 
   <!-- Backup and Restore Page -->
   <string name="backup_page_title">備份與恢復</string>
