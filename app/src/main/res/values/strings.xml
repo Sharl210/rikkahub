@@ -6,7 +6,7 @@
   <string name="stop">Stop</string>
   <string name="send">Send</string>
   <string name="more_options">More options</string>
-  <string name="use_web_search">Use Web Search</string>
+  <string name="use_web_search">Web Search</string>
   <string name="photo">Photo</string>
   <string name="take_picture">Take Picture</string>
   <string name="copy">Copy</string>
@@ -202,6 +202,10 @@
   <string name="avatar_pick_emoji">Pick Emoji</string>
   <string name="avatar_reset">Reset</string>
   <string name="avatar_cancel">Cancel</string>
+
+  <!-- Assistant Picker -->
+  <string name="assistant_picker_expand">Expand</string>
+  <string name="assistant_picker_selected">Selected</string>
 
   <!-- Emoji Picker -->
   <string name="emoji_picker_search_placeholder">Search emojis...</string>

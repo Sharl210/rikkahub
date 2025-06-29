@@ -2,9 +2,12 @@ package me.rerere.rikkahub.ui.components.ui
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
@@ -27,8 +30,13 @@ fun ToggleSurface(
     modifier = modifier,
     shape = shape,
     border = if (checked) null else CardDefaults.outlinedCardBorder(),
-    tonalElevation = if(checked) 2.dp else 0.dp
+    tonalElevation = if (checked) 2.dp else 0.dp
   ) {
-    content()
+    val contentColor = LocalContentColor.current.copy(alpha = if (!checked) 0.8f else 1.0f)
+    CompositionLocalProvider(LocalContentColor provides contentColor) {
+      ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+        content()
+      }
+    }
   }
 }

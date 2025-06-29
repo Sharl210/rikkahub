@@ -7,7 +7,7 @@
   <string name="stop">停止</string>
   <string name="send">發送</string>
   <string name="more_options">更多選項</string>
-  <string name="use_web_search">使用網路搜尋</string>
+  <string name="use_web_search">網路搜尋</string>
   <string name="photo">照片</string>
   <string name="take_picture">拍照</string>
   <string name="copy">複製</string>
@@ -410,4 +410,8 @@
   <string name="tag_input_dialog_create_new">創建新標籤</string>
   <string name="tag_input_dialog_tag_exists">該名稱的標籤已存在</string>
   <string name="assistant_page_tags">標籤</string>
+
+  <!-- Assistant Picker -->
+  <string name="assistant_picker_expand">展開</string>
+  <string name="assistant_picker_selected">已選擇</string>
 </resources> 
