@@ -18,23 +18,21 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,7 +47,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,31 +58,35 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastForEach
-import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Boxes
+import com.composables.icons.lucide.GripHorizontal
 import com.composables.icons.lucide.Hammer
 import com.composables.icons.lucide.Heart
-import com.composables.icons.lucide.HeartOff
 import com.composables.icons.lucide.Lightbulb
 import com.composables.icons.lucide.Lucide
-import com.composables.icons.lucide.Settings
-import com.composables.icons.lucide.Settings2
 import com.composables.icons.lucide.X
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
 import me.rerere.rikkahub.ui.components.ui.icons.HeartIcon
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.extendColors
+import org.koin.compose.koinInject
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.uuid.Uuid
 
 @Composable
@@ -92,7 +97,6 @@ fun ModelSelector(
   modifier: Modifier = Modifier,
   onlyIcon: Boolean = false,
   allowClear: Boolean = false,
-  onUpdate: ((List<ProviderSetting>) -> Unit)? = null,
   onSelect: (Model) -> Unit
 ) {
   var popup by remember {
@@ -138,14 +142,14 @@ fun ModelSelector(
       }
     }
   } else {
-    FilledTonalButton(
+    FilledTonalIconButton(
       onClick = {
         popup = true
-      }
+      },
     ) {
       if (model != null) {
         AutoAIIcon(
-          modifier = Modifier.size(20.dp),
+          modifier = Modifier.size(24.dp),
           name = model.modelId
         )
       } else {
@@ -183,20 +187,6 @@ fun ModelSelector(
             popup = false
             onSelect(it)
           },
-          onUpdate = { newModel ->
-            onUpdate?.invoke(providers.map { provider ->
-              provider.copyProvider(
-                models = provider.models.map {
-                  if (it.id == newModel.id) {
-                    newModel
-                  } else {
-                    it
-                  }
-                }
-              )
-            })
-          },
-          allowFavorite = onUpdate != null,
           onDismiss = {
             popup = false
           }
@@ -212,27 +202,58 @@ private fun ColumnScope.ModelList(
   currentModel: Uuid? = null,
   providers: List<ProviderSetting>,
   modelType: ModelType,
-  allowFavorite: Boolean = true,
-  onUpdate: (Model) -> Unit,
   onSelect: (Model) -> Unit,
   onDismiss: () -> Unit
 ) {
-  val favoriteModels = providers
-    .flatMap { provider ->
-      provider.models.map { model -> model to provider }
-    }
-    .fastFilter { (model, _) ->
-      model.favorite && model.type == modelType
-    }
-  var searchKeywords by remember { mutableStateOf("") }
-  val lazyListState = rememberLazyListState()
   val coroutineScope = rememberCoroutineScope()
-  val providerPositions = remember(providers, favoriteModels, allowFavorite) {
+  val settingsStore = koinInject<SettingsStore>()
+  val settings = settingsStore.settingsFlow
+    .collectAsStateWithLifecycle()
+
+  val favoriteModels = settings.value.favoriteModels.mapNotNull { modelId ->
+    val model = settings.value.providers.findModelById(modelId) ?: return@mapNotNull null
+    val provider = model.findProvider(settings.value.providers) ?: return@mapNotNull null
+    model to provider
+  }
+
+  var searchKeywords by remember { mutableStateOf("") }
+
+  val lazyListState = rememberLazyListState()
+  val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+    // 计算favorite models在列表中的位置偏移
+    var favoriteStartIndex = 0
+    if (providers.isEmpty()) {
+      favoriteStartIndex = 1 // no providers item
+    }
+    if (favoriteModels.isNotEmpty()) {
+      favoriteStartIndex += 1 // favorite header
+    }
+
+    val fromIndex = from.index - favoriteStartIndex
+    val toIndex = to.index - favoriteStartIndex
+
+    // 只处理favorite models范围内的拖拽
+    if (fromIndex >= 0 && toIndex >= 0 &&
+      fromIndex < favoriteModels.size && toIndex < favoriteModels.size
+    ) {
+      val newFavoriteModels = settings.value.favoriteModels.toMutableList().apply {
+        add(toIndex, removeAt(fromIndex))
+      }
+      coroutineScope.launch {
+        settingsStore.update { oldSettings ->
+          oldSettings.copy(favoriteModels = newFavoriteModels)
+        }
+      }
+    }
+  }
+  val haptic = LocalHapticFeedback.current
+
+  val providerPositions = remember(providers, favoriteModels) {
     var currentIndex = 0
     if (providers.isEmpty()) {
       currentIndex = 1 // no providers item
     }
-    if (favoriteModels.isNotEmpty() && allowFavorite) {
+    if (favoriteModels.isNotEmpty()) {
       currentIndex += 1 // favorite header
       currentIndex += favoriteModels.size // favorite models
     }
@@ -267,7 +288,7 @@ private fun ColumnScope.ModelList(
       }
     }
 
-    if (favoriteModels.isNotEmpty() && allowFavorite) {
+    if (favoriteModels.isNotEmpty()) {
       stickyHeader {
         Text(
           text = stringResource(R.string.model_list_favorite),
@@ -284,40 +305,56 @@ private fun ColumnScope.ModelList(
         items = favoriteModels,
         key = { "favorite:" + it.first.id.toString() }
       ) { (model, provider) ->
-        ModelItem(
-          model = model,
-          onSelect = onSelect,
-          modifier = Modifier.animateItem(),
-          providerSetting = provider,
-          select = model.id == currentModel,
-          onDismiss = {
-            onDismiss()
-          },
-        ) {
-          IconButton(
-            onClick = {
-              onUpdate(
-                model.copy(
-                  favorite = !model.favorite
+        ReorderableItem(
+          state = reorderableState,
+          key = "favorite:" + model.id.toString()
+        ) { isDragging ->
+          ModelItem(
+            model = model,
+            onSelect = onSelect,
+            modifier = Modifier
+                .scale(if (isDragging) 0.95f else 1f)
+                .animateItem(),
+            providerSetting = provider,
+            select = model.id == currentModel,
+            onDismiss = {
+              onDismiss()
+            },
+            tail = {
+              IconButton(
+                onClick = {
+                  coroutineScope.launch {
+                    settingsStore.update { settings ->
+                      settings.copy(
+                        favoriteModels = settings.favoriteModels.filter { it != model.id }
+                      )
+                    }
+                  }
+                }
+              ) {
+                Icon(
+                  HeartIcon,
+                  contentDescription = null,
+                  modifier = Modifier.size(20.dp),
+                  tint = MaterialTheme.extendColors.red6
+                )
+              }
+            },
+            dragHandle = {
+              Icon(
+                imageVector = Lucide.GripHorizontal,
+                contentDescription = null,
+                modifier = Modifier.longPressDraggableHandle(
+                  onDragStarted = {
+                    haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                  },
+                  onDragStopped = {
+                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                  }
                 )
               )
             }
-          ) {
-            if (model.favorite) {
-              Icon(
-                HeartIcon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.extendColors.red6
-              )
-            } else {
-              Icon(
-                Lucide.HeartOff,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-              )
-            }
-          }
+          )
         }
       }
     }
@@ -344,6 +381,7 @@ private fun ColumnScope.ModelList(
         },
         key = { it.id }
       ) { model ->
+        val favorite = settings.value.favoriteModels.contains(model.id)
         ModelItem(
           model = model,
           onSelect = onSelect,
@@ -354,30 +392,37 @@ private fun ColumnScope.ModelList(
             onDismiss()
           },
           tail = {
-            if (allowFavorite) {
-              IconButton(
-                onClick = {
-                  onUpdate(
-                    model.copy(
-                      favorite = !model.favorite
-                    )
-                  )
+            IconButton(
+              onClick = {
+                coroutineScope.launch {
+                  settingsStore.update { settings ->
+                    if (favorite) {
+                      settings.copy(
+                        favoriteModels = settings.favoriteModels.filter { it != model.id }
+                      )
+
+                    } else {
+                      settings.copy(
+                        favoriteModels = settings.favoriteModels + model.id
+                      )
+                    }
+                  }
                 }
-              ) {
-                if (model.favorite) {
-                  Icon(
-                    HeartIcon,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.extendColors.red6
-                  )
-                } else {
-                  Icon(
-                    Lucide.Heart,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                  )
-                }
+              }
+            ) {
+              if (favorite) {
+                Icon(
+                  HeartIcon,
+                  contentDescription = null,
+                  modifier = Modifier.size(20.dp),
+                  tint = MaterialTheme.extendColors.red6
+                )
+              } else {
+                Icon(
+                  Lucide.Heart,
+                  contentDescription = null,
+                  modifier = Modifier.size(20.dp)
+                )
               }
             }
           }
@@ -456,19 +501,22 @@ private fun ModelItem(
   onSelect: (Model) -> Unit,
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
-  tail: @Composable RowScope.() -> Unit = {}
+  tail: @Composable RowScope.() -> Unit = {},
+  dragHandle: @Composable (RowScope.() -> Unit)? = null
 ) {
   val navController = LocalNavController.current
   val interactionSource = remember { MutableInteractionSource() }
   Card(
     modifier = modifier.combinedClickable(
       enabled = true,
-      onLongClick = {
-        onDismiss()
-        navController.navigate(
-          "setting/provider/${providerSetting.id}"
-        )
-      },
+      onLongClick = if (dragHandle == null) {
+        {
+          onDismiss()
+          navController.navigate(
+            "setting/provider/${providerSetting.id}"
+          )
+        }
+      } else null,
       onClick = { onSelect(model) },
       interactionSource = interactionSource,
       indication = LocalIndication.current
@@ -574,6 +622,7 @@ private fun ModelItem(
         }
       }
       tail()
+      dragHandle?.let { it() }
     }
   }
 }

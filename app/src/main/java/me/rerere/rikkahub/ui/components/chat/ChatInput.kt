@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateBounds
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -109,6 +110,7 @@ import me.rerere.rikkahub.data.mcp.McpManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.ui.components.ui.KeepScreenOn
 import me.rerere.rikkahub.ui.components.ui.ToggleSurface
+import me.rerere.rikkahub.ui.hooks.heroAnimation
 import me.rerere.rikkahub.utils.GetContentWithMultiMime
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.createChatFilesByContents
@@ -257,17 +259,17 @@ fun ChatInput(
   Surface {
     Column(
       modifier = modifier
-        .imePadding()
-        .navigationBarsPadding(),
+          .imePadding()
+          .navigationBarsPadding(),
       verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
       // Medias
       Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 8.dp)
-          .horizontalScroll(rememberScrollState())
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .horizontalScroll(rememberScrollState())
       ) {
         state.messageContent.filterIsInstance<UIMessagePart.Image>().fastForEach { image ->
           Box {
@@ -286,17 +288,17 @@ fun ChatInput(
               imageVector = Lucide.X,
               contentDescription = null,
               modifier = Modifier
-                .clip(CircleShape)
-                .size(20.dp)
-                .clickable {
-                  // Remove image
-                  state.messageContent =
-                    state.messageContent.filterNot { it == image }
-                  // Delete image
-                  context.deleteChatFiles(listOf(image.url.toUri()))
-                }
-                .align(Alignment.TopEnd)
-                .background(MaterialTheme.colorScheme.secondary),
+                  .clip(CircleShape)
+                  .size(20.dp)
+                  .clickable {
+                      // Remove image
+                      state.messageContent =
+                          state.messageContent.filterNot { it == image }
+                      // Delete image
+                      context.deleteChatFiles(listOf(image.url.toUri()))
+                  }
+                  .align(Alignment.TopEnd)
+                  .background(MaterialTheme.colorScheme.secondary),
               tint = MaterialTheme.colorScheme.onSecondary
             )
           }
@@ -306,8 +308,8 @@ fun ChatInput(
             Box {
               Surface(
                 modifier = Modifier
-                  .height(48.dp)
-                  .widthIn(max = 128.dp),
+                    .height(48.dp)
+                    .widthIn(max = 128.dp),
                 shape = RoundedCornerShape(8.dp),
                 tonalElevation = 4.dp
               ) {
@@ -331,17 +333,17 @@ fun ChatInput(
                 imageVector = Lucide.X,
                 contentDescription = null,
                 modifier = Modifier
-                  .clip(CircleShape)
-                  .size(20.dp)
-                  .clickable {
-                    // Remove image
-                    state.messageContent =
-                      state.messageContent.filterNot { it == document }
-                    // Delete image
-                    context.deleteChatFiles(listOf(document.url.toUri()))
-                  }
-                  .align(Alignment.TopEnd)
-                  .background(MaterialTheme.colorScheme.secondary),
+                    .clip(CircleShape)
+                    .size(20.dp)
+                    .clickable {
+                        // Remove image
+                        state.messageContent =
+                            state.messageContent.filterNot { it == document }
+                        // Delete image
+                        context.deleteChatFiles(listOf(document.url.toUri()))
+                    }
+                    .align(Alignment.TopEnd)
+                    .background(MaterialTheme.colorScheme.secondary),
                 tint = MaterialTheme.colorScheme.onSecondary
               )
             }
@@ -351,8 +353,8 @@ fun ChatInput(
       Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 8.dp),
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
       ) {
         // Insert files
         IconButton(
@@ -371,8 +373,8 @@ fun ChatInput(
           shape = RoundedCornerShape(32.dp),
           tonalElevation = 4.dp,
           modifier = Modifier
-            .weight(1f)
-            .padding(horizontal = 8.dp)
+              .weight(1f)
+              .padding(horizontal = 8.dp)
         ) {
           Column {
             if (state.isEditing()) {
@@ -381,8 +383,8 @@ fun ChatInput(
               ) {
                 Row(
                   modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                      .fillMaxWidth()
+                      .padding(horizontal = 16.dp, vertical = 4.dp),
                   verticalAlignment = Alignment.CenterVertically
                 ) {
                   Text(
@@ -428,14 +430,14 @@ fun ChatInput(
               value = text.text,
               onValueChange = { state.setMessageText(it) },
               modifier = Modifier
-                .fillMaxWidth()
-                .contentReceiver(receiveContentListener)
-                .onFocusChanged {
-                  isFocused = it.isFocused
-                  if (isFocused) {
-                    expand = ExpandState.Collapsed
-                  }
-                },
+                  .fillMaxWidth()
+                  .contentReceiver(receiveContentListener)
+                  .onFocusChanged {
+                      isFocused = it.isFocused
+                      if (isFocused) {
+                          expand = ExpandState.Collapsed
+                      }
+                  },
               shape = RoundedCornerShape(32.dp),
               placeholder = {
                 Text(stringResource(R.string.chat_input_placeholder))
@@ -491,8 +493,8 @@ fun ChatInput(
       // Actions Row
       FlowRow(
         modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 8.dp),
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
       ) {
         // Model Picker
@@ -503,12 +505,9 @@ fun ChatInput(
             onUpdateChatModel(it)
             dismissExpand()
           },
-          onUpdate = {
-            onUpdateProviders(it)
-          },
           type = ModelType.CHAT,
           onlyIcon = true,
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier,
         )
 
         Spacer(Modifier.weight(1f))
@@ -539,7 +538,8 @@ fun ChatInput(
             onUpdateReasoningTokens = {
               onUpdateAssistant(assistant.copy(thinkingBudget = it))
             },
-            onlyIcon = false
+            onlyIcon = false,
+            modifier = Modifier.heroAnimation("reasoning")
           )
         }
 
@@ -571,8 +571,8 @@ fun ChatInput(
       // Expanded content
       Box(
         modifier = Modifier
-          .animateContentSize()
-          .fillMaxWidth()
+            .animateContentSize()
+            .fillMaxWidth()
       ) {
         BackHandler(
           enabled = expand != ExpandState.Collapsed,
@@ -603,8 +603,8 @@ private fun ChatActions(
 ) {
   FlowRow(
     modifier = Modifier
-      .padding(16.dp)
-      .fillMaxWidth(),
+        .padding(16.dp)
+        .fillMaxWidth(),
     itemVerticalAlignment = Alignment.CenterVertically,
     verticalArrangement = Arrangement.spacedBy(4.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -617,8 +617,8 @@ private fun ChatActions(
 private fun FilesPicker(state: ChatInputState, onDismiss: () -> Unit) {
   FlowRow(
     modifier = Modifier
-      .fillMaxWidth()
-      .padding(16.dp),
+        .fillMaxWidth()
+        .padding(16.dp),
     horizontalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     TakePicButton {
@@ -659,14 +659,14 @@ private fun FullScreenEditor(
     ) {
       Surface(
         modifier = Modifier
-          .widthIn(max = 800.dp)
-          .fillMaxHeight(0.9f),
+            .widthIn(max = 800.dp)
+            .fillMaxHeight(0.9f),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
       ) {
         Column(
           modifier = Modifier
-            .padding(8.dp)
-            .fillMaxSize(),
+              .padding(8.dp)
+              .fillMaxSize(),
           horizontalAlignment = Alignment.End,
           verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -683,8 +683,8 @@ private fun FullScreenEditor(
             value = text.text,
             onValueChange = { state.setMessageText(it) },
             modifier = Modifier
-              .imePadding()
-              .fillMaxSize(),
+                .imePadding()
+                .fillMaxSize(),
             shape = RoundedCornerShape(32.dp),
             placeholder = {
               Text(stringResource(R.string.chat_input_placeholder))
@@ -808,16 +808,16 @@ private fun BigIconTextButton(
   val interactionSource = remember { MutableInteractionSource() }
   Column(
     modifier = modifier
-      .clip(RoundedCornerShape(8.dp))
-      .clickable(
-        interactionSource = interactionSource,
-        indication = LocalIndication.current,
-        onClick = onClick
-      )
-      .semantics {
-        role = Role.Button
-      }
-      .wrapContentWidth(),
+        .clip(RoundedCornerShape(8.dp))
+        .clickable(
+            interactionSource = interactionSource,
+            indication = LocalIndication.current,
+            onClick = onClick
+        )
+        .semantics {
+            role = Role.Button
+        }
+        .wrapContentWidth(),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.spacedBy(2.dp)
   ) {
@@ -866,12 +866,14 @@ private fun ChatActionItem(
       ) {
         icon()
       }
-      title?.let {
-        Column(
-          modifier = Modifier,
-          verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-          title()
+      if(checked) {
+        title?.let {
+          Column(
+            modifier = Modifier,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+          ) {
+            title()
+          }
         }
       }
       tail?.let {
