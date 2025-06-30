@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.components.chat
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,15 +29,42 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.ui.components.ui.EmojiPicker
 import me.rerere.rikkahub.utils.createChatFilesByContents
+
+@Composable
+fun TextAvatar(text: String, modifier: Modifier = Modifier) {
+  Box(
+    modifier = modifier
+        .clip(CircleShape)
+        .background(MaterialTheme.colorScheme.secondary),
+    contentAlignment = Alignment.Center
+  ) {
+    Text(
+      text = text.take(1).uppercase(),
+      color = MaterialTheme.colorScheme.onSecondary,
+      maxLines = 1,
+      overflow = TextOverflow.Clip,
+      autoSize = TextAutoSize.StepBased(
+        minFontSize = 8.sp,
+        maxFontSize = 32.sp,
+        stepSize = 1.sp
+      ),
+      lineHeight = 0.8.em
+    )
+  }
+}
 
 @Composable
 fun Avatar(
@@ -88,7 +116,7 @@ fun Avatar(
               minFontSize = 15.sp,
               maxFontSize = 30.sp,
             ),
-            modifier = Modifier.padding(4.dp)
+            lineHeight = 1.em
           )
         }
 
@@ -96,7 +124,7 @@ fun Avatar(
           Text(
             text = name.takeIf { it.isNotEmpty() }?.firstOrNull()?.toString()?.uppercase() ?: "A",
             fontSize = 20.sp,
-            modifier = Modifier.padding(4.dp)
+            lineHeight = 1.em
           )
         }
       }
