@@ -350,7 +350,14 @@ object GoogleProvider : Provider<ProviderSetting.Google> {
       }
       if (params.model.abilities.contains(ModelAbility.REASONING)) {
         put("thinkingConfig", buildJsonObject {
-          put("thinkingBudget", params.thinkingBudget ?: 0)
+          val isGeminiPro = params.model.modelId.contains(Regex("2\\.5.*pro", RegexOption.IGNORE_CASE))
+          val budget = if(isGeminiPro) {
+            // https://github.com/rikkahub/rikkahub/issues/207
+            (params.thinkingBudget ?: -1).let { if(it == 0) -1 else it }
+          } else {
+            params.thinkingBudget ?: 0
+          }
+          put("thinkingBudget", budget)
           put("includeThoughts", true)
         })
       }
