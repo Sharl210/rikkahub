@@ -3,10 +3,14 @@ package me.rerere.rikkahub.data.ai
 import android.content.Context
 import androidx.core.net.toFile
 import androidx.core.net.toUri
+import com.chaquo.python.Python
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.InputMessageTransformer
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import java.io.File
 
 object DocumentAsPromptTransformer : InputMessageTransformer {
   override suspend fun transform(
@@ -14,25 +18,45 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
     messages: List<UIMessage>,
     model: Model
   ): List<UIMessage> {
-    return messages.map { message ->
-      message.copy(
-        parts = message.parts.toMutableList().apply {
-          val documents = filterIsInstance<UIMessagePart.Document>()
-          if (documents.isNotEmpty()) {
-            documents.forEach { document ->
-              val file = document.url.toUri().toFile()
-              val text = file.readText()
-              val prompt = """
-                                ## file: ${document.fileName}
-                                ```
-                                $text
-                                ```
-                            """.trimMargin()
-              add(UIMessagePart.Text(prompt))
+    return withContext(Dispatchers.IO) {
+      messages.map { message ->
+        message.copy(
+          parts = message.parts.toMutableList().apply {
+            val documents = filterIsInstance<UIMessagePart.Document>()
+            if (documents.isNotEmpty()) {
+              documents.forEach { document ->
+                val file = document.url.toUri().toFile()
+                val content = when (document.fileName.substringAfterLast('.')) {
+                  "pdf" -> parsePdfAsText(file)
+                  "docx" -> parseDocxAsText(file)
+                  else -> file.readText()
+                }
+                val prompt = """
+                  ## user sent a file: ${document.fileName}
+                  <content>
+                  ```
+                  $content
+                  ```
+                  </content>
+                  """.trimMargin()
+                add(0, UIMessagePart.Text(prompt))
+              }
             }
           }
-        }
-      )
+        )
+      }
     }
+  }
+
+  private fun parsePdfAsText(file: File): String {
+    val module = Python.getInstance().getModule("pdf_util")
+    val reader = module.callAttr("extract_text_from_pdf", file.absolutePath).toString()
+    return reader
+  }
+
+  private fun parseDocxAsText(file: File): String {
+    val module = Python.getInstance().getModule("docx_util")
+    val reader = module.callAttr("extract_text_from_docx", file.absolutePath).toString()
+    return reader
   }
 }
