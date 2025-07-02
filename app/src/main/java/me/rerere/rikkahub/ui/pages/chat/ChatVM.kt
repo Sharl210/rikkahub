@@ -47,11 +47,13 @@ import me.rerere.ai.ui.finishReasoning
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.ai.ui.transformers.PlaceholderTransformer
 import me.rerere.ai.ui.transformers.ThinkTagTransformer
+import me.rerere.ai.ui.truncate
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
+import me.rerere.rikkahub.data.ai.HtmlEscapeTransformer
 import me.rerere.rikkahub.data.ai.TemplateTransformer
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -90,6 +92,7 @@ private val outputTransformers by lazy {
   listOf(
     ThinkTagTransformer,
     Base64ImageToLocalFileTransformer,
+    HtmlEscapeTransformer,
   )
 }
 
@@ -445,7 +448,9 @@ class ChatVM(
             UIMessage.user(
               prompt = settings.value.titlePrompt.applyPlaceholders(
                 "locale" to Locale.getDefault().displayName,
-                "content" to conversation.currentMessages.joinToString("\n\n") { it.summaryAsText() }
+                "content" to conversation.currentMessages
+                  .truncate(conversation.truncateIndex)
+                  .joinToString("\n\n") { it.summaryAsText() }
               )
             ),
           ),
@@ -459,7 +464,7 @@ class ChatVM(
         // 生成完，conversation可能不是最新了，因此需要重新获取
         conversationRepo.getConversationById(conversation.id)?.let {
           saveConversation(
-            it.copy(
+            conversation = it.copy(
               title = result.choices[0].message?.toText()?.trim() ?: "",
             )
           )
@@ -483,7 +488,9 @@ class ChatVM(
             UIMessage.user(
               settings.value.suggestionPrompt.applyPlaceholders(
                 "locale" to Locale.getDefault().displayName,
-                "content" to conversation.currentMessages.takeLast(8)
+                "content" to conversation.currentMessages
+                  .truncate(conversation.truncateIndex)
+                  .takeLast(8)
                   .joinToString("\n\n") { it.summaryAsText() }
               ),
             )
