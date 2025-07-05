@@ -10,6 +10,7 @@
   <string name="use_web_search">ウェブ検索を</string>
   <string name="web_search_enabled">ウェブ検索が有効になりました</string>
   <string name="web_search_disabled">ウェブ検索が無効になりました</string>
+  <string name="search_picker_title">検索設定</string>
   <string name="photo">写真</string>
   <string name="take_picture">写真を撮る</string>
   <string name="copy">コピー</string>
@@ -63,6 +64,13 @@
   <string name="setting_page_providers_desc">AIプロバイダーを設定</string>
   <string name="setting_page_search_service">検索サービス</string>
   <string name="setting_page_search_service_desc">検索サービスを設定</string>
+  <string name="setting_page_search_title">検索サービス</string>
+  <string name="setting_page_search_providers">検索プロバイダー</string>
+  <string name="setting_page_search_add_provider">プロバイダー追加</string>
+  <string name="setting_page_search_provider_type">プロバイダータイプ</string>
+  <string name="setting_page_search_delete_provider">プロバイダー削除</string>
+  <string name="setting_page_search_common_options">共通オプション</string>
+  <string name="setting_page_search_result_size">結果数</string>
   <string name="setting_page_mcp">MCP</string>
   <string name="setting_page_mcp_desc">MCPサーバーを設定</string>
   <string name="setting_page_assistant">アシスタント</string>

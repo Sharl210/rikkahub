@@ -9,6 +9,7 @@
   <string name="use_web_search">Web Search</string>
   <string name="web_search_enabled">Web search enabled</string>
   <string name="web_search_disabled">Web search disabled</string>
+  <string name="search_picker_title">Search Settings</string>
   <string name="photo">Photo</string>
   <string name="take_picture">Take Picture</string>
   <string name="copy">Copy</string>
@@ -63,6 +64,13 @@
   <string name="setting_page_providers_desc">Configure AI providers</string>
   <string name="setting_page_search_service">Search Service</string>
   <string name="setting_page_search_service_desc">Set up search service</string>
+  <string name="setting_page_search_title">Search Service</string>
+  <string name="setting_page_search_providers">Search Providers</string>
+  <string name="setting_page_search_add_provider">Add Provider</string>
+  <string name="setting_page_search_provider_type">Provider Type</string>
+  <string name="setting_page_search_delete_provider">Delete Provider</string>
+  <string name="setting_page_search_common_options">Common Options</string>
+  <string name="setting_page_search_result_size">Result Size</string>
   <string name="setting_page_mcp">MCP</string>
   <string name="setting_page_mcp_desc">Configure MCP Servers</string>
   <string name="setting_page_assistant">Assistant</string>
