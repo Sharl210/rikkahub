@@ -335,10 +335,29 @@ class ChatVM(
     }
   }
 
+  private fun checkInvalidMessages() {
+    val messages = conversation.value.currentMessages
+      .map { message ->
+        message.copy(
+          parts = message.parts.filter {
+            // 过滤掉空文本
+            it !is UIMessagePart.Text || it.text.isNotEmpty()
+          }
+        )
+      }
+      .filter { it.parts.isNotEmpty() } // 过滤没有parts的message
+    _conversation.value = _conversation.value.updateCurrentMessages(
+      messages = messages
+    )
+  }
+
   private suspend fun handleMessageComplete(messageRange: ClosedRange<Int>? = null) {
     val model = currentChatModel.value ?: return
     runCatching {
-      updateConversation(conversation.value.copy(chatSuggestions = emptyList())) // reset suggestions
+      // reset suggestions
+      updateConversation(conversation.value.copy(chatSuggestions = emptyList()))
+
+      // memory tool
       if (!model.abilities.contains(ModelAbility.TOOL)) {
         if (enableWebSearch.value || mcpManager.getAllAvailableTools()
             .isNotEmpty() || settings.value.getCurrentAssistant().enableMemory
@@ -346,6 +365,11 @@ class ChatVM(
           errorFlow.emit(IllegalStateException(context.getString(R.string.tools_warning)))
         }
       }
+
+      // check invalid messages
+      checkInvalidMessages()
+
+      // start generating
       generationHandler.generateText(
         settings = settings.value,
         model = model,
