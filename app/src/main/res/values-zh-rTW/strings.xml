@@ -49,6 +49,8 @@
   <string name="chat_page_export_format">匯出格式</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">將對話匯出為markdown檔案</string>
+  <string name="chat_page_export_image">匯出為圖片</string>
+  <string name="chat_page_export_image_desc">將對話匯出為PNG圖片</string>
   <string name="chat_page_export_success">已匯出為%1$s</string>
   <string name="chat_page_export_share_via">分享方式</string>
 
@@ -445,6 +447,13 @@
   <string name="tag_input_dialog_create_new">創建新標籤</string>
   <string name="tag_input_dialog_tag_exists">該名稱的標籤已存在</string>
   <string name="assistant_page_tags">標籤</string>
+
+  <!-- Long Press Actions -->
+  <string name="select_and_copy">選擇複製</string>
+  <string name="copy_all">複製全部</string>
+  <string name="no_text_content_to_copy">暫無可複製的文字內容</string>
+  <string name="share">分享</string>
+  <string name="create_fork">建立分支</string>
 
   <!-- Assistant Picker -->
   <string name="assistant_picker_expand">展開</string>

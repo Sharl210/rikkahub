@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +54,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.zIndex
 import com.composables.icons.lucide.Check
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronUp
@@ -76,9 +79,6 @@ import kotlin.uuid.Uuid
 
 private const val LoadingIndicatorKey = "LoadingIndicator"
 private const val ScrollBottomKey = "ScrollBottomKey"
-private const val TokenUsageItemKey = "TokenUsageItemKey"
-private const val ContextUsageItemKey = "ContextUsageItemKey"
-private const val SuggestionItemKey = "SuggestionItemKey"
 
 @Composable
 fun ChatList(
@@ -102,7 +102,7 @@ fun ChatList(
 
   fun List<LazyListItemInfo>.isAtBottom(): Boolean {
     val lastItem = lastOrNull() ?: return false
-    if (lastItem.key == LoadingIndicatorKey || lastItem.key == ScrollBottomKey || lastItem.key == TokenUsageItemKey) {
+    if (lastItem.key == LoadingIndicatorKey || lastItem.key == ScrollBottomKey) {
       return true
     }
     return lastItem.key == conversation.messageNodes.lastOrNull()?.id && (lastItem.offset + lastItem.size <= state.layoutInfo.viewportEndOffset + lastItem.size * 0.15 + 32)
@@ -122,7 +122,7 @@ fun ChatList(
     LaunchedEffect(state) {
       snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
         // println("is bottom = ${visibleItemsInfo.isAtBottom()}, scroll = ${state.isScrollInProgress}, can_scroll = ${state.canScrollForward}, loading = $loading")
-        if (!state.isScrollInProgress  && loadingState) {
+        if (!state.isScrollInProgress && loadingState) {
           if (visibleItemsInfo.isAtBottom()) {
             state.requestScrollToItem(conversation.messageNodes.lastIndex + 10)
           }
@@ -164,7 +164,8 @@ fun ChatList(
     ) {
       itemsIndexed(
         items = conversation.messageNodes,
-        key = { index, item -> item.id }) { index, node ->
+        key = { index, item -> item.id },
+      ) { index, node ->
         Column {
           ListSelectableItem(
             key = node.id,
@@ -242,70 +243,6 @@ fun ChatList(
         item(LoadingIndicatorKey) {
           LoadingIndicator()
         }
-      } else if (conversation.chatSuggestions.isNotEmpty()) {
-        item(SuggestionItemKey) {
-          FlowRow(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-          ) {
-            conversation.chatSuggestions.fastForEach { suggestion ->
-              Box(
-                modifier = Modifier
-                  .clip(RoundedCornerShape(50))
-                  .clickable {
-                    onClickSuggestion(suggestion)
-                  }
-                  .background(MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
-                  .padding(vertical = 4.dp, horizontal = 8.dp),
-              ) {
-                Text(
-                  text = suggestion,
-                  style = MaterialTheme.typography.bodySmall
-                )
-              }
-            }
-          }
-        }
-      }
-
-      item(ContextUsageItemKey) {
-        // 当设置允许显示统计信息，并且聊天记录不为空时才显示
-        if (settings.displaySetting.showTokenUsage && conversation.messageNodes.isNotEmpty()) {
-          val configuredContextSize = settings.getCurrentAssistant().contextMessageSize
-          val effectiveMessagesAfterTruncation =
-            conversation.messageNodes.size - conversation.truncateIndex.coerceAtLeast(0)
-          val actualContextMessageCount =
-            minOf(effectiveMessagesAfterTruncation, configuredContextSize)
-
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(
-              8.dp,
-              Alignment.CenterHorizontally
-            ),
-          ) {
-            // Token使用量统计 (仅当有数据时)
-            if (conversation.tokenUsage != null) {
-              Text(
-                text = "Tokens: ${conversation.tokenUsage.totalTokens} (${conversation.tokenUsage.promptTokens} -> ${conversation.tokenUsage.completionTokens})",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outlineVariant,
-              )
-            }
-            // 上下文消息数量统计
-            Text(
-              text = "Context: $actualContextMessageCount/$configuredContextSize",
-              style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.outlineVariant,
-            )
-          }
-        }
       }
 
       // 为了能正确滚动到这
@@ -323,7 +260,8 @@ fun ChatList(
       visible = selecting,
       modifier = Modifier
         .align(Alignment.BottomEnd)
-        .padding(16.dp),
+        .padding(bottom = 32.dp)
+        .padding(end = 16.dp),
       enter = slideInVertically(
         initialOffsetY = { it * 2 },
       ),
@@ -363,6 +301,35 @@ fun ChatList(
       scope = scope,
       state = state
     )
+
+    // Suggestion
+    if (conversation.chatSuggestions.isNotEmpty()) {
+      LazyRow(
+        modifier = Modifier
+          .align(Alignment.BottomCenter)
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        items(conversation.chatSuggestions) { suggestion ->
+          Box(
+            modifier = Modifier
+              .clip(RoundedCornerShape(50))
+              .clickable {
+                onClickSuggestion(suggestion)
+              }
+              .background(MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+              .padding(vertical = 4.dp, horizontal = 8.dp),
+          ) {
+            Text(
+              text = suggestion,
+              style = MaterialTheme.typography.bodySmall
+            )
+          }
+        }
+      }
+    }
   }
 }
 

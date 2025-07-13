@@ -50,6 +50,8 @@
   <string name="chat_page_export_format">エクスポート形式</string>
   <string name="chat_page_export_markdown">Markdown</string>
   <string name="chat_page_export_markdown_desc">会話をmarkdownファイルとしてエクスポート</string>
+  <string name="chat_page_export_image">画像としてエクスポート</string>
+  <string name="chat_page_export_image_desc">会話をPNG画像としてエクスポート</string>
   <string name="chat_page_export_success">%1$sにエクスポートしました</string>
   <string name="chat_page_export_share_via">共有方法</string>
 
@@ -447,6 +449,13 @@
   <string name="tag_input_dialog_create_new">新しいタグを作成</string>
   <string name="tag_input_dialog_tag_exists">同じ名前のタグが既に存在します</string>
   <string name="assistant_page_tags">タグ</string>
+
+  <!-- Long Press Actions -->
+  <string name="select_and_copy">選択コピー</string>
+  <string name="copy_all">全てコピー</string>
+  <string name="no_text_content_to_copy">コピーできるテキストコンテンツがありません</string>
+  <string name="share">共有</string>
+  <string name="create_fork">フォークを作成</string>
 
   <!-- Assistant Picker -->
   <string name="assistant_picker_expand">展開</string>
