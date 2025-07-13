@@ -133,6 +133,8 @@
   <string name="assistant_page_context_message_count">上下文訊息數量: %d</string>
   <string name="assistant_page_memory">記憶</string>
   <string name="assistant_page_memory_desc">啟用記憶後，模型在與你對話時嘗試主動記錄你的資訊，並在後續其他對話中使用，此功能需要模型支援工具調用才能正常工作</string>
+  <string name="assistant_page_recent_chats">參考歷史聊天記錄</string>
+  <string name="assistant_page_recent_chats_desc">啟用後，助手將參考最近的聊天歷史記錄來提供更有上下文的回應</string>
   <string name="assistant_page_manage_memory">管理記憶 (%d條)</string>
   <string name="assistant_page_cancel">取消</string>
   <string name="assistant_page_save">保存</string>
@@ -234,6 +236,9 @@
 
   <!-- Reasoning -->
   <string name="reasoning_set_budget">設置推理預算 (%1$d tokens)</string>
+  
+  <!-- User -->
+  <string name="user_default_name">用戶</string>
   <string name="reasoning_off">關閉</string>
 
   <!-- Data Settings -->

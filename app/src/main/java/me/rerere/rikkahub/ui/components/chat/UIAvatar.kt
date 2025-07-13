@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +127,7 @@ fun UIAvatar(
             model = value.url,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
           )
         }
 
@@ -136,13 +138,17 @@ fun UIAvatar(
               minFontSize = 15.sp,
               maxFontSize = 30.sp,
             ),
-            lineHeight = 1.em
+            lineHeight = 1.em,
+            modifier = Modifier.padding(2.dp)
           )
         }
 
         is Avatar.Dummy -> {
           Text(
-            text = name.takeIf { it.isNotEmpty() }?.firstOrNull()?.toString()?.uppercase() ?: "A",
+            text = name
+              .ifBlank { stringResource(R.string.user_default_name) }
+              .takeIf { it.isNotEmpty() }
+              ?.firstOrNull()?.toString()?.uppercase() ?: "A",
             fontSize = 20.sp,
             lineHeight = 1.em
           )
