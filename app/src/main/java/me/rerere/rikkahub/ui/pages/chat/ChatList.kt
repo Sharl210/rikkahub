@@ -203,7 +203,7 @@ fun ChatList(
                 onDelete(node.currentMessage)
               },
               onShare = {
-                selecting = true
+                selecting = true  // 使用 CoroutineScope 延迟状态更新
                 selectedItems.clear()
                 selectedItems.addAll(conversation.messageNodes.map { it.id }
                   .subList(0, conversation.messageNodes.indexOf(node) + 1))
