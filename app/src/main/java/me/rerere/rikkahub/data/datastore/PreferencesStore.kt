@@ -94,6 +94,7 @@ class SettingsStore(
     
     // TTS
     val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
+    val SELECTED_TTS_PROVIDER = stringPreferencesKey("selected_tts_provider")
   }
 
   private val dataStore = context.settingsStore
@@ -149,6 +150,7 @@ class SettingsStore(
         ttsProviders = preferences[TTS_PROVIDERS]?.let {
           JsonInstant.decodeFromString(it)
         } ?: emptyList(),
+        selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) },
       )
     }
     .map {
@@ -173,9 +175,16 @@ class SettingsStore(
           assistants.add(defaultAssistant.copy())
         }
       }
+      val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
+      DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
+        if (ttsProviders.none { it.id == defaultTTSProvider.id }) {
+          ttsProviders.add(defaultTTSProvider.copyProvider())
+        }
+      }
       it.copy(
         providers = providers,
-        assistants = assistants
+        assistants = assistants,
+        ttsProviders = ttsProviders
       )
     }
     .map { settings ->
@@ -197,6 +206,7 @@ class SettingsStore(
           }
         },
         assistants = settings.assistants.distinctBy { it.id },
+        ttsProviders = settings.ttsProviders.distinctBy { it.id },
         favoriteModels = settings.favoriteModels.filter { uuid ->
           settings.providers.flatMap { it.models }.any { it.id == uuid }
         }
@@ -241,6 +251,9 @@ class SettingsStore(
       preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
       preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
       preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
+      settings.selectedTTSProviderId?.let { 
+        preferences[SELECTED_TTS_PROVIDER] = it.toString() 
+      } ?: preferences.remove(SELECTED_TTS_PROVIDER)
     }
   }
 
@@ -279,7 +292,8 @@ data class Settings(
   val searchServiceSelected: Int = 0,
   val mcpServers: List<McpServerConfig> = emptyList(),
   val webDavConfig: WebDavConfig = WebDavConfig(),
-  val ttsProviders: List<TTSProviderSetting> = emptyList()
+  val ttsProviders: List<TTSProviderSetting> = DEFAULT_TTS_PROVIDERS,
+  val selectedTTSProviderId: Uuid? = DEFAULT_SYSTEM_TTS_ID
 )
 
 @Serializable
@@ -340,6 +354,12 @@ fun Settings.getCurrentAssistant(): Assistant {
 
 fun Settings.getAssistantById(id: Uuid): Assistant? {
   return this.assistants.find { it.id == id }
+}
+
+fun Settings.getSelectedTTSProvider(): TTSProviderSetting? {
+  return selectedTTSProviderId?.let { id ->
+    ttsProviders.find { it.id == id && it.enabled }
+  } ?: ttsProviders.firstOrNull { it.enabled }
 }
 
 fun Model.findProvider(providers: List<ProviderSetting>): ProviderSetting? {
@@ -507,6 +527,20 @@ internal val DEFAULT_ASSISTANTS = listOf(
     systemPrompt = "你是{model_name}, 一个人工智能助手，乐意为用户提供准确，有益的帮助。现在时间是{cur_datetime}，用户设备语言为\"{locale}\"，时区为{timezone}，用户正在使用{device_info}，版本{system_version}。如果用户没有明确说明，请使用用户设备语言和用户对话。"
   ),
 )
+
+private val DEFAULT_SYSTEM_TTS_ID = Uuid.parse("026a01a2-c3a0-4fd5-8075-80e03bdef200")
+
+private val DEFAULT_TTS_PROVIDERS = listOf(
+  TTSProviderSetting.SystemTTS(
+    id = DEFAULT_SYSTEM_TTS_ID,
+    name = "",
+    enabled = true,
+    speechRate = 1.0f,
+    pitch = 1.0f,
+    language = "zh-CN"  // 默认使用中文，符合项目的中文用户群体
+  )
+)
+
 internal val DEFAULT_ASSISTANTS_IDS = DEFAULT_ASSISTANTS.map { it.id }
 
 internal val DEFAULT_TITLE_PROMPT = """
