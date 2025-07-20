@@ -1,11 +1,9 @@
 package me.rerere.tts.provider.providers
 
 import android.util.Base64
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import android.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.model.TTSResponse
@@ -18,6 +16,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+
+private const val TAG = "GeminiTTSProvider"
 
 class GeminiTTSProvider : TTSProvider<TTSProviderSetting.Gemini> {
     private val httpClient = OkHttpClient.Builder()
@@ -80,6 +80,8 @@ class GeminiTTSProvider : TTSProvider<TTSProviderSetting.Gemini> {
             put("model", providerSetting.model)
         }
 
+        Log.i(TAG, "generateSpeech: $requestBody")
+
         val httpRequest = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/${providerSetting.model}:generateContent")
             .addHeader("x-goog-api-key", providerSetting.apiKey)
@@ -118,35 +120,5 @@ class GeminiTTSProvider : TTSProvider<TTSProviderSetting.Gemini> {
                 "bitDepth" to "16"
             )
         )
-    }
-
-    override suspend fun streamSpeech(
-        providerSetting: TTSProviderSetting.Gemini,
-        request: TTSRequest
-    ): Flow<AudioChunk> = flow {
-        // Gemini currently doesn't support streaming TTS
-        // We'll implement it as a single chunk
-        val response = generateSpeech(providerSetting, request)
-        emit(
-            AudioChunk(
-                data = response.audioData,
-                isLast = true,
-                metadata = response.metadata
-            )
-        )
-    }
-
-    override suspend fun testConnection(providerSetting: TTSProviderSetting.Gemini): Boolean {
-        return try {
-            val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models")
-                .addHeader("x-goog-api-key", providerSetting.apiKey)
-                .build()
-
-            val response = httpClient.newCall(request).execute()
-            response.isSuccessful
-        } catch (e: Exception) {
-            false
-        }
     }
 }
