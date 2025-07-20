@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import me.rerere.rikkahub.di.appModule
 import me.rerere.rikkahub.di.dataSourceModule
 import me.rerere.rikkahub.di.repositoryModule
@@ -25,51 +26,53 @@ private const val TAG = "RikkaHubApp"
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 
 class RikkaHubApp : Application() {
-  override fun onCreate() {
-    super.onCreate()
-    startKoin {
-      androidLogger()
-      androidContext(this@RikkaHubApp)
-      workManagerFactory()
-      modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
+    override fun onCreate() {
+        super.onCreate()
+        startKoin {
+            androidLogger()
+            androidContext(this@RikkaHubApp)
+            workManagerFactory()
+            modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
+        }
+        this.createNotificationChannel()
+
+        // set cursor window size
+        DatabaseUtil.setCursorWindowSize(16 * 1024 * 1024)
+
+        // Start python
+        if (!Python.isStarted()) {
+            Python.start(AndroidPlatform(this))
+        }
+
+        // delete temp files
+        deleteTempFiles()
     }
-    this.createNotificationChannel()
 
-    // set cursor window size
-    DatabaseUtil.setCursorWindowSize(16 * 1024 * 1024)
-
-    // Start python
-    if (!Python.isStarted()) {
-      Python.start(AndroidPlatform(this))
+    private fun deleteTempFiles() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            val dir = filesDir.resolve("temp")
+            if (dir.exists()) {
+                dir.deleteRecursively()
+            }
+        }
     }
 
-    // delete temp files
-    deleteTempFiles()
-  }
-
-  private fun deleteTempFiles() {
-    val dir = filesDir.resolve("temp")
-    if (dir.exists()) {
-      dir.deleteRecursively()
+    private fun createNotificationChannel() {
+        val notificationManager = NotificationManagerCompat.from(this)
+        val channel = NotificationChannelCompat
+            .Builder(
+                CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
+                NotificationManagerCompat.IMPORTANCE_DEFAULT
+            )
+            .setName(getString(R.string.notification_channel_chat_completed))
+            .build()
+        notificationManager.createNotificationChannel(channel)
     }
-  }
 
-  private fun createNotificationChannel() {
-    val notificationManager = NotificationManagerCompat.from(this)
-    val channel = NotificationChannelCompat
-      .Builder(
-        CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
-        NotificationManagerCompat.IMPORTANCE_DEFAULT
-      )
-      .setName(getString(R.string.notification_channel_chat_completed))
-      .build()
-    notificationManager.createNotificationChannel(channel)
-  }
-
-  override fun onTerminate() {
-    super.onTerminate()
-    get<AppScope>().cancel()
-  }
+    override fun onTerminate() {
+        super.onTerminate()
+        get<AppScope>().cancel()
+    }
 }
 
 class AppScope : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.Default)
