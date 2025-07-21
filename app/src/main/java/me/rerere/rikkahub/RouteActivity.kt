@@ -59,6 +59,7 @@ import me.rerere.rikkahub.ui.context.LocalSharedTransitionScope
 import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.context.popBack
+import me.rerere.rikkahub.ui.hooks.readBooleanPreference
 import me.rerere.rikkahub.ui.hooks.readStringPreference
 import me.rerere.rikkahub.ui.hooks.rememberCustomTtsState
 import me.rerere.rikkahub.ui.pages.assistant.AssistantPage
@@ -99,12 +100,17 @@ class RouteActivity : ComponentActivity() {
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
         setContent {
+            val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
             val navStack = rememberNavBackStack(
                 Screen.Chat(
-                    id = readStringPreference(
-                        "lastConversationId",
+                    id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
                         Uuid.random().toString()
-                    ) ?: Uuid.random().toString(),
+                    } else {
+                        readStringPreference(
+                            "lastConversationId",
+                            Uuid.random().toString()
+                        ) ?: Uuid.random().toString()
+                    }
                 )
             )
             ShareHandler(navStack)

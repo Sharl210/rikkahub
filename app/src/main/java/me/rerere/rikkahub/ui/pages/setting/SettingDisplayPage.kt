@@ -31,6 +31,8 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.DisplaySetting
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
+import me.rerere.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
+import me.rerere.rikkahub.ui.hooks.rememberSharedPreferenceString
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 
@@ -190,6 +192,32 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                                 checked = displaySetting.showMessageJumper,
                                 onCheckedChange = {
                                     updateDisplaySetting(displaySetting.copy(showMessageJumper = it))
+                                }
+                            )
+                        },
+                    )
+                }
+            }
+
+            item {
+                var createNewConversationOnStart by rememberSharedPreferenceBoolean(
+                    "create_new_conversation_on_start",
+                    true
+                )
+                Card {
+                    ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_display_page_create_new_conversation_on_start_title))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_display_page_create_new_conversation_on_start_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = createNewConversationOnStart,
+                                onCheckedChange = {
+                                    createNewConversationOnStart = it
                                 }
                             )
                         },
