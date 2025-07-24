@@ -1,14 +1,6 @@
 package me.rerere.rikkahub.data.mcp
 
 import android.util.Log
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.sse.SSE
-import io.ktor.client.request.header
-import io.ktor.http.headers
-import io.ktor.serialization.kotlinx.json.json
 import io.modelcontextprotocol.kotlin.sdk.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.Implementation
 import io.modelcontextprotocol.kotlin.sdk.Tool
@@ -45,13 +37,6 @@ class McpManager(
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .build()
-
-    private val httpClient = HttpClient(CIO) {
-        install(SSE)
-        install(ContentNegotiation) {
-            json(McpJson)
-        }
-    }
 
     private val clients: MutableMap<McpServerConfig, Client> = mutableMapOf()
     val syncingStatus = MutableStateFlow<Map<Uuid, McpStatus>>(mapOf())

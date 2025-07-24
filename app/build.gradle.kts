@@ -21,8 +21,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 74
-        versionName = "1.3.2"
+        versionCode = 75
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -247,9 +247,6 @@ dependencies {
 
     // mcp
     implementation(libs.modelcontextprotocol.kotlin.sdk)
-    implementation("io.ktor:ktor-client-okhttp:3.2.2")
-    implementation("io.ktor:ktor-client-content-negotiation:3.2.2")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.2.2")
 
     // modules
     implementation(project(":ai"))
