@@ -13,6 +13,7 @@
   <string name="search_picker_title">搜索设置</string>
   <string name="photo">照片</string>
   <string name="take_picture">拍照</string>
+  <string name="shortcut_take_picture">拍照提问</string>
   <string name="upload_file">上传文件</string>
   <string name="copy">复制</string>
   <string name="regenerate">重新生成</string>
@@ -165,6 +166,11 @@
   <string name="assistant_page_top_p_value">Top P: %s</string>
   <string name="assistant_page_thinking_budget">思考预算</string>
   <string name="assistant_page_thinking_budget_default">默认</string>
+  <string name="assistant_page_max_tokens">最大Token数</string>
+  <string name="assistant_page_max_tokens_desc">最大生成Token数量。留空表示无限制。</string>
+  <string name="assistant_page_max_tokens_no_limit">无限制</string>
+  <string name="assistant_page_max_tokens_limit">限制：%d 个Token</string>
+  <string name="assistant_page_max_tokens_no_token_limit">无Token限制</string>
   <string name="assistant_page_message_template">聊天内容模板</string>
   <string name="assistant_page_message_template_desc">控制聊天消息在发送给LLM之前的内容格式，通常不需要修改</string>
   <string name="assistant_page_template_preview">预览:</string>
