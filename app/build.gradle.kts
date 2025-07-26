@@ -21,8 +21,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 75
-        versionName = "1.4.0"
+        versionCode = 76
+        versionName = "1.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -111,6 +111,11 @@ android {
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
         compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
     }
+}
+
+tasks.register("buildAll") {
+    dependsOn("assembleRelease", "bundleRelease")
+    description = "Build both APK and AAB"
 }
 
 ksp {
