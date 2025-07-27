@@ -212,6 +212,7 @@
   <string name="menu_page_evening_greeting">こんばんは\uD83D\uDC4B</string>
   <string name="menu_page_night_greeting">夜更かしですね、お気をつけて\uD83D\uDC4B</string>
   <string name="menu_page_ai_translator">AI翻訳</string>
+  <string name="menu_page_image_generation">画像生成</string>
   <string name="menu_page_knowledge_base">知識ベース (開発中)</string>
   <string name="menu_page_llm_leaderboard">LLMランキング</string>
 
@@ -221,8 +222,7 @@
   <string name="model_list_favorite">お気に入り</string>
   <string name="model_list_chat">チャット</string>
   <string name="model_list_embedding">埋め込み</string>
-  <string name="model_list_image">画像</string>
-  <string name="model_list_search_placeholder">モデル名を入力して検索</string>
+    <string name="model_list_search_placeholder">モデル名を入力して検索</string>
 
   <!-- About Page -->
   <string name="about_page_title">アプリについて</string>
@@ -378,7 +378,6 @@
   <string name="setting_provider_page_model_type">モデルタイプ</string>
   <string name="setting_provider_page_chat_model">チャットモデル</string>
   <string name="setting_provider_page_embedding_model">埋め込みモデル</string>
-  <string name="setting_provider_page_image_model">画像モデル</string>
   <string name="setting_provider_page_input_modality">入力モダリティ</string>
   <string name="setting_provider_page_output_modality">出力モダリティ</string>
   <string name="setting_provider_page_text">テキスト</string>
