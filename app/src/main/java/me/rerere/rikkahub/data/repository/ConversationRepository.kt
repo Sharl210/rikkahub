@@ -54,6 +54,16 @@ class ConversationRepository(
             }
     }
 
+    fun searchConversationsOfAssistant(assistantId: Uuid, titleKeyword: String): Flow<List<Conversation>> {
+        return conversationDAO
+            .searchConversationsOfAssistant(assistantId.toString(), titleKeyword)
+            .map { flow ->
+                flow.map { entity ->
+                    conversationEntityToConversation(entity)
+                }
+            }
+    }
+
     suspend fun getConversationById(uuid: Uuid): Conversation? {
         val entity = conversationDAO.getConversationById(uuid.toString())
         return if (entity != null) {
@@ -103,7 +113,8 @@ class ConversationRepository(
             updateAt = conversation.updateAt.toEpochMilli(),
             assistantId = conversation.assistantId.toString(),
             truncateIndex = conversation.truncateIndex,
-            chatSuggestions = JsonInstant.encodeToString(conversation.chatSuggestions)
+            chatSuggestions = JsonInstant.encodeToString(conversation.chatSuggestions),
+            isPinned = conversation.isPinned
         )
     }
 
@@ -120,6 +131,7 @@ class ConversationRepository(
             assistantId = Uuid.parse(conversationEntity.assistantId),
             truncateIndex = conversationEntity.truncateIndex,
             chatSuggestions = JsonInstant.decodeFromString(conversationEntity.chatSuggestions),
+            isPinned = conversationEntity.isPinned,
         )
     }
 
@@ -128,5 +140,36 @@ class ConversationRepository(
             conversationDAO.delete(conversation)
             context.deleteChatFiles(conversationEntityToConversation(conversation).files)
         }
+    }
+
+    fun getPinnedConversations(): Flow<List<Conversation>> {
+        return conversationDAO
+            .getPinnedConversations()
+            .map { flow ->
+                flow.map { entity ->
+                    conversationEntityToConversation(entity)
+                }
+            }
+    }
+
+    suspend fun togglePinStatus(conversationId: Uuid) {
+        conversationDAO.updatePinStatus(
+            id = conversationId.toString(),
+            isPinned = !(getConversationById(conversationId)?.isPinned ?: false)
+        )
+    }
+
+    suspend fun pinConversation(conversationId: Uuid) {
+        conversationDAO.updatePinStatus(
+            id = conversationId.toString(),
+            isPinned = true
+        )
+    }
+
+    suspend fun unpinConversation(conversationId: Uuid) {
+        conversationDAO.updatePinStatus(
+            id = conversationId.toString(),
+            isPinned = false
+        )
     }
 }

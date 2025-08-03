@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -25,11 +27,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Pin
+import com.composables.icons.lucide.PinOff
 import com.composables.icons.lucide.X
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.model.Conversation
@@ -89,7 +95,7 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
         }
     ) { contentPadding ->
         LazyColumn(
-            contentPadding = contentPadding + PaddingValues(8.dp),
+            contentPadding = contentPadding + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(showConversations, key = { it.id }) {
@@ -99,6 +105,7 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                         navigateToChatPage(navController, it.id)
                     },
                     onDelete = { vm.deleteConversation(it) },
+                    onTogglePin = { vm.togglePinStatus(it.id) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .animateItem()
@@ -150,6 +157,7 @@ private fun ConversationItem(
     conversation: Conversation,
     modifier: Modifier = Modifier,
     onDelete: () -> Unit = {},
+    onTogglePin: () -> Unit = {},
     onClick: () -> Unit = {},
 ) {
     Surface(
@@ -160,16 +168,45 @@ private fun ConversationItem(
     ) {
         ListItem(
             headlineContent = {
-                Text(conversation.title.ifBlank { stringResource(R.string.history_page_new_conversation) }.trim())
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (conversation.isPinned) {
+                        Icon(
+                            imageVector = Lucide.Pin,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    Text(
+                        text = conversation.title.ifBlank { stringResource(R.string.history_page_new_conversation) }
+                            .trim(),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
             },
             supportingContent = {
                 Text(conversation.createAt.toLocalDateTime())
             },
             trailingContent = {
-                IconButton(
-                    onClick = onDelete
-                ) {
-                    Icon(Lucide.X, stringResource(R.string.delete))
+                Row {
+                    IconButton(
+                        onClick = onTogglePin
+                    ) {
+                        Icon(
+                            if (conversation.isPinned) Lucide.PinOff else Lucide.Pin,
+                            contentDescription = if (conversation.isPinned) "Unpin" else "Pin"
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete
+                    ) {
+                        Icon(Lucide.X, stringResource(R.string.delete))
+                    }
                 }
             }
         )
