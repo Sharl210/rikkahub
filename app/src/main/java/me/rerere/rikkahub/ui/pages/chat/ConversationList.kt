@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Pin
+import com.composables.icons.lucide.PinOff
 import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.Trash2
 import com.composables.icons.lucide.X
@@ -63,7 +65,8 @@ fun ColumnScope.ConversationList(
     modifier: Modifier = Modifier,
     onClick: (Conversation) -> Unit = {},
     onDelete: (Conversation) -> Unit = {},
-    onRegenerateTitle: (Conversation) -> Unit = {}
+    onRegenerateTitle: (Conversation) -> Unit = {},
+    onPin: (Conversation) -> Unit = {}
 ) {
     var searchInput by remember {
         mutableStateOf("")
@@ -99,20 +102,36 @@ fun ColumnScope.ConversationList(
         }
     )
 
-    // 按日期分组对话
-    val groupedConversations by remember(conversations) {
+    // 分离置顶和普通对话
+    val calculateConversations by remember(conversations) {
         derivedStateOf {
-            conversations
+            val filtered = conversations
                 .filter { conversation ->
                     conversation.title.contains(searchInput, true)
                 }
+
+            // 分离置顶和非置顶对话
+            val (pinned, unpinned) = filtered.partition { it.isPinned }
+
+            // 置顶对话按更新时间排序
+            val pinnedSorted = pinned.sortedByDescending { it.updateAt }
+
+            // 非置顶对话按日期分组
+            val unpinnedGrouped = unpinned
                 .groupBy { conversation ->
                     val instant = conversation.updateAt
                     instant.atZone(ZoneId.systemDefault()).toLocalDate()
                 }
                 .toSortedMap(compareByDescending { it })
+                .mapValues { (_, conversations) ->
+                    conversations.sortedByDescending { it.updateAt }
+                }
+
+            pinnedSorted to unpinnedGrouped
         }
     }
+
+    val (pinnedConversations, groupedConversations) = calculateConversations
 
     LazyColumn(
         modifier = modifier,
@@ -136,6 +155,27 @@ fun ColumnScope.ConversationList(
             }
         }
 
+        // 置顶对话区域
+        if (pinnedConversations.isNotEmpty()) {
+            stickyHeader {
+                PinnedHeader()
+            }
+
+            items(pinnedConversations, key = { it.id }) { conversation ->
+                ConversationItem(
+                    conversation = conversation,
+                    selected = conversation.id == current.id,
+                    loading = conversation.id in loadings,
+                    onClick = onClick,
+                    onDelete = onDelete,
+                    onRegenerateTitle = onRegenerateTitle,
+                    onPin = onPin,
+                    modifier = Modifier.animateItem()
+                )
+            }
+        }
+
+        // 普通对话按日期分组
         groupedConversations.forEach { (date, conversationsInGroup) ->
             // 添加日期标题
             stickyHeader {
@@ -151,10 +191,36 @@ fun ColumnScope.ConversationList(
                     onClick = onClick,
                     onDelete = onDelete,
                     onRegenerateTitle = onRegenerateTitle,
+                    onPin = onPin,
                     modifier = Modifier.animateItem()
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PinnedHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Lucide.Pin,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = "置顶对话",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
@@ -203,6 +269,7 @@ private fun ConversationItem(
     modifier: Modifier = Modifier,
     onDelete: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
+    onPin: (Conversation) -> Unit = {},
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -239,6 +306,16 @@ private fun ConversationItem(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.weight(1f))
+
+            // 置顶图标
+            AnimatedVisibility(conversation.isPinned) {
+                Icon(
+                    imageVector = Lucide.Pin,
+                    contentDescription = "Pinned",
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
             AnimatedVisibility(loading) {
                 Box(
                     modifier = Modifier
@@ -254,6 +331,24 @@ private fun ConversationItem(
                 expanded = showDropdownMenu,
                 onDismissRequest = { showDropdownMenu = false },
             ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (conversation.isPinned) "取消置顶" else "置顶对话"
+                        )
+                    },
+                    onClick = {
+                        onPin(conversation)
+                        showDropdownMenu = false
+                    },
+                    leadingIcon = {
+                        Icon(
+                            if (conversation.isPinned) Lucide.PinOff else Lucide.Pin,
+                            null
+                        )
+                    }
+                )
+
                 DropdownMenuItem(
                     text = {
                         Text(stringResource(id = R.string.chat_page_regenerate_title))

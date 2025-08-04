@@ -96,6 +96,7 @@ import androidx.core.net.toFile
 import androidx.core.net.toUri
 import com.composables.icons.lucide.BookDashed
 import com.composables.icons.lucide.BookHeart
+import com.composables.icons.lucide.BookOpenText
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronLeft
 import com.composables.icons.lucide.ChevronRight
@@ -198,6 +199,9 @@ fun ChatMessage(
     )
     var showActionsSheet by remember { mutableStateOf(false) }
     var showSelectCopySheet by remember { mutableStateOf(false) }
+    val navController = LocalNavController.current
+    val context = LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
@@ -259,8 +263,6 @@ fun ChatMessage(
         }
     }
     if (showActionsSheet) {
-        val navController = LocalNavController.current
-        val context = LocalContext.current
         LongPressActionsSheet(
             message = message,
             onEdit = onEdit,
@@ -277,7 +279,11 @@ fun ChatMessage(
                     .joinToString("\n\n") { it.text }
                     .trim()
                 if (textContent.isNotBlank()) {
-                    val htmlContent = buildMarkdownPreviewHtml(context, textContent)
+                    val htmlContent = buildMarkdownPreviewHtml(
+                        context = context,
+                        markdown = textContent,
+                        colorScheme = colorScheme
+                    )
                     navController.navigate(Screen.WebView(content = htmlContent.base64Encode()))
                 }
             },
@@ -367,12 +373,12 @@ private fun LongPressActionsSheet(
                             .fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = Lucide.ExternalLink,
+                            imageVector = Lucide.BookOpenText,
                             contentDescription = null,
                             modifier = Modifier.padding(4.dp)
                         )
                         Text(
-                            text = "WebView Preview",
+                            text = stringResource(R.string.render_with_webview),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }
