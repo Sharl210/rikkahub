@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -118,6 +119,26 @@ import com.composables.icons.lucide.Trash2
 import com.composables.icons.lucide.Volume2
 import com.composables.icons.lucide.Wrench
 import com.composables.icons.lucide.X
+import com.composables.icons.lucide.Languages
+import com.composables.icons.lucide.ChevronDown
+import com.composables.icons.lucide.ChevronUp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.core.graphics.translationMatrix
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -136,6 +157,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageAnnotation
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyUIMessage
+import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.highlight.HighlightText
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
@@ -167,7 +189,11 @@ import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.rikkahub.utils.urlDecode
+import me.rerere.rikkahub.utils.applyPlaceholders
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import org.koin.compose.koinInject
+import java.util.Locale
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
@@ -189,7 +215,8 @@ fun ChatMessage(
     onEdit: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
-    onUpdate: (MessageNode) -> Unit
+    onUpdate: (MessageNode) -> Unit,
+    onTranslate: ((UIMessage, Locale) -> Unit)? = null
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -241,6 +268,13 @@ fun ChatMessage(
                 loading = loading,
                 model = model,
             )
+
+            message.translation?.let { translation ->
+                CollapsibleTranslationText(
+                    content = translation,
+                    onClickCitation = {}
+                )
+            }
         }
         AnimatedVisibility(
             visible = showActions,
@@ -257,7 +291,8 @@ fun ChatMessage(
                     onUpdate = onUpdate,
                     onOpenActionSheet = {
                         showActionsSheet = true
-                    }
+                    },
+                    onTranslate = onTranslate
                 )
             }
         }
@@ -738,10 +773,12 @@ private fun ColumnScope.Actions(
     onUpdate: (MessageNode) -> Unit,
     onRegenerate: () -> Unit,
     onOpenActionSheet: () -> Unit,
+    onTranslate: ((UIMessage, Locale) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var showInformation by remember { mutableStateOf(false) }
     var isPendingDelete by remember { mutableStateOf(false) }
+    var showTranslateDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(isPendingDelete) {
         if (isPendingDelete) {
@@ -795,6 +832,25 @@ private fun ColumnScope.Actions(
                     .size(16.dp),
                 tint = if (isAvailable) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.38f)
             )
+
+            // Translation button
+            if (onTranslate != null) {
+                Icon(
+                    imageVector = Lucide.Languages,
+                    contentDescription = stringResource(R.string.translate),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = LocalIndication.current,
+                            onClick = {
+                                showTranslateDialog = true
+                            }
+                        )
+                        .padding(8.dp)
+                        .size(16.dp)
+                )
+            }
         }
 
         Icon(
@@ -816,6 +872,19 @@ private fun ColumnScope.Actions(
         MessageNodePagerButtons(
             node = node,
             onUpdate = onUpdate,
+        )
+    }
+
+    // Translation dialog
+    if (showTranslateDialog && onTranslate != null) {
+        LanguageSelectionDialog(
+            onLanguageSelected = { language ->
+                showTranslateDialog = false
+                onTranslate(message, language)
+            },
+            onDismissRequest = {
+                showTranslateDialog = false
+            }
         )
     }
 }
@@ -1624,24 +1693,29 @@ fun ReasoningCard(
 
             // 如果是gemini, 显示当前的思考标题
             if (loading && model != null && ModelRegistry.GEMINI_SERIES.match(model.modelId)) {
-                val title = reasoning.reasoning.extractGeminiThinkingTitle()
-                if (title != null) {
-                    AnimatedContent(
-                        targetState = title,
-                        transitionSpec = {
-                            (slideInVertically { height -> height } + fadeIn()).togetherWith(slideOutVertically { height -> -height } + fadeOut())
-                        }
-                    ) {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .shimmer(true),
-                        )
-                    }
-                }
+                GeminiReasoningTitle(reasoning = reasoning)
             }
+        }
+    }
+}
+
+@Composable
+private fun GeminiReasoningTitle(reasoning: UIMessagePart.Reasoning) {
+    val title = reasoning.reasoning.extractGeminiThinkingTitle()
+    if (title != null) {
+        AnimatedContent(
+            targetState = title,
+            transitionSpec = {
+                (slideInVertically { height -> height } + fadeIn()).togetherWith(slideOutVertically { height -> -height } + fadeOut())
+            }
+        ) {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .shimmer(true),
+            )
         }
     }
 }
