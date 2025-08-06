@@ -408,8 +408,10 @@ private val DEFAULT_PROVIDERS = listOf(
         description = {
             MarkdownBlock(
                 content = """
-                    全球领先的 AI 能力提供商，加速 AGI 普惠人类。
+                    **全球领先的 AI 能力提供商，加速 AGI 普惠人类。**
                     官网: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)
+
+                    * 已内置硅基流动免费模型，无需API Key即可使用，如果需要更强大的模型，请自行申请和配置自己的API Key。
                 """.trimIndent()
             )
         },
