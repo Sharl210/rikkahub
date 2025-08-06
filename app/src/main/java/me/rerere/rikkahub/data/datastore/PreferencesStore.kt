@@ -22,13 +22,16 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.serialization.Serializable
+import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.mcp.McpServerConfig
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Tag
+import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.theme.PresetThemeType
 import me.rerere.rikkahub.ui.theme.PresetThemes
 import me.rerere.rikkahub.utils.JsonInstant
@@ -112,12 +115,14 @@ class SettingsStore(
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
-                chatModelId = preferences[SELECT_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
-                titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
+                chatModelId = preferences[SELECT_MODEL]?.let { Uuid.parse(it) }
+                    ?: SILICONFLOW_QWEN3_8B_ID,
+                titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) }
+                    ?: SILICONFLOW_QWEN2_5_ID,
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
-                    ?: Uuid.random(),
+                    ?: SILICONFLOW_QWEN2_5_ID,
                 suggestionModelId = preferences[SUGGESTION_MODEL]?.let { Uuid.parse(it) }
-                    ?: Uuid.random(),
+                    ?: SILICONFLOW_QWEN2_5_ID,
                 titlePrompt = preferences[TITLE_PROMPT] ?: DEFAULT_TITLE_PROMPT,
                 translatePrompt = preferences[TRANSLATION_PROMPT] ?: DEFAULT_TRANSLATION_PROMPT,
                 suggestionPrompt = preferences[SUGGESTION_PROMPT] ?: DEFAULT_SUGGESTION_PROMPT,
@@ -150,7 +155,8 @@ class SettingsStore(
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
-                selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) } ?: DEFAULT_SYSTEM_TTS_ID,
+                selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
+                    ?: DEFAULT_SYSTEM_TTS_ID,
             )
         }
         .map {
@@ -166,6 +172,7 @@ class SettingsStore(
                     provider.copyProvider(
                         builtIn = defaultProvider.builtIn,
                         description = defaultProvider.description,
+                        models = (defaultProvider.models + provider.models).distinctBy { model -> model.modelId },
                     )
                 } else provider
             }.toMutableList()
@@ -374,12 +381,15 @@ fun Model.findProvider(providers: List<ProviderSetting>): ProviderSetting? {
     return null
 }
 
+private val SILICONFLOW_QWEN3_8B_ID = Uuid.parse("dd82297e-4237-4d3c-85b3-58d5c7084fc2")
+private val SILICONFLOW_QWEN2_5_ID = Uuid.parse("94d04067-dd1a-45d8-a6ca-c210c6a98a58")
+
 private val DEFAULT_PROVIDERS = listOf(
     ProviderSetting.OpenAI(
         id = Uuid.parse("1eeea727-9ee5-4cae-93e6-6fb01a4d051e"),
         name = "OpenAI",
         baseUrl = "https://api.openai.com/v1",
-        apiKey = "sk-",
+        apiKey = "",
         builtIn = true
     ),
     ProviderSetting.Google(
@@ -390,17 +400,51 @@ private val DEFAULT_PROVIDERS = listOf(
         builtIn = true
     ),
     ProviderSetting.OpenAI(
-        id = Uuid.parse("f099ad5b-ef03-446d-8e78-7e36787f780b"),
-        name = "DeepSeek",
-        baseUrl = "https://api.deepseek.com/v1",
-        apiKey = "sk-",
-        builtIn = true
-    ),
-    ProviderSetting.OpenAI(
         id = Uuid.parse("56a94d29-c88b-41c5-8e09-38a7612d6cf8"),
         name = "硅基流动",
         baseUrl = "https://api.siliconflow.cn/v1",
-        apiKey = "sk-",
+        apiKey = "",
+        builtIn = true,
+        description = {
+            MarkdownBlock(
+                content = """
+                    全球领先的 AI 能力提供商，加速 AGI 普惠人类。
+                    官网: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)
+                """.trimIndent()
+            )
+        },
+        models = listOf(
+            Model(
+                id = SILICONFLOW_QWEN3_8B_ID,
+                modelId = "Qwen/Qwen3-8B",
+                displayName = "Qwen3-8B",
+                inputModalities = listOf(Modality.TEXT),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+            ),
+            Model(
+                id = Uuid.parse("e4b836cd-6cbe-4350-b9e5-8c3b2d448b00"),
+                modelId = "THUDM/GLM-4.1V-9B-Thinking",
+                displayName = "GLM-4.1V-9B",
+                inputModalities = listOf(Modality.TEXT, Modality.IMAGE),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.TOOL, ModelAbility.REASONING),
+            ),
+            Model(
+                id = SILICONFLOW_QWEN2_5_ID,
+                modelId = "Qwen/Qwen2.5-7B-Instruct",
+                displayName = "Qwen2.5-7B",
+                inputModalities = listOf(Modality.TEXT),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.TOOL),
+            )
+        )
+    ),
+    ProviderSetting.OpenAI(
+        id = Uuid.parse("f099ad5b-ef03-446d-8e78-7e36787f780b"),
+        name = "DeepSeek",
+        baseUrl = "https://api.deepseek.com/v1",
+        apiKey = "",
         builtIn = true
     ),
     ProviderSetting.OpenAI(
