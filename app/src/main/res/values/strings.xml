@@ -313,7 +313,7 @@
   <string name="setting_display_page_chat_list_model_icon_title">Chat List Model Icon</string>
   <string name="setting_display_page_chat_list_model_icon_desc">Whether to display model icons in chat list messages</string>
   <string name="setting_display_page_show_token_usage_title">Show Token &amp; Context Stats</string>
-  <string name="setting_display_page_show_token_usage_desc">Display token usage and context count at the bottom of the conversation</string>
+  <string name="setting_display_page_show_token_usage_desc">Display token usage and message count</string>
   <string name="setting_display_page_auto_collapse_thinking_title">Auto Collapse Thinking</string>
   <string name="setting_display_page_auto_collapse_thinking_desc">Automatically collapse thinking content after thinking is complete</string>
   <string name="setting_display_page_show_updates_title">Show Updates</string>
@@ -326,6 +326,8 @@
   <string name="setting_display_page_font_size_preview">This is a **sample** chat text</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_title">Message Generation Haptic Effect</string>
   <string name="setting_display_page_enable_message_generation_haptic_effect_desc">Enable haptic feedback when messages are being generated</string>
+  <string name="setting_display_page_amoled_dark_mode_title">AMOLED Dark Mode</string>
+  <string name="setting_display_page_amoled_dark_mode_desc">Use pure black background in dark theme, suitable for AMOLED screens</string>
   <string name="setting_display_page_title">Display Settings</string>
 
   <!-- Share Handler Page -->
