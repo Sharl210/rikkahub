@@ -24,6 +24,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.MessageChunk
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageChoice
@@ -189,12 +190,12 @@ class ResponseAPI(private val client: OkHttpClient) : OpenAIImpl {
             // reasoning
             if (params.model.abilities.contains(ModelAbility.REASONING)) {
                 val level = ReasoningLevel.fromBudgetTokens(params.thinkingBudget ?: 0)
-                if (level.isOpenAISpecific) {
-                    put("reasoning", buildJsonObject {
-                        put("summary", "auto")
+                put("reasoning", buildJsonObject {
+                    put("summary", "auto")
+                    if (level != ReasoningLevel.AUTO) {
                         put("effort", level.effort)
-                    })
-                }
+                    }
+                })
             }
 
             // tools
@@ -518,8 +519,7 @@ class ResponseAPI(private val client: OkHttpClient) : OpenAIImpl {
 }
 
 private fun isModelAllowTemperature(model: Model): Boolean {
-    // 不能是openai o-系列模型，例如o3, o4-mini
-    return !model.modelId.matches(Regex("o[0-9](-.+)?"))
+    return !ModelRegistry.OPENAI_O_MODELS.match(model.modelId) && !ModelRegistry.GPT_5.match(model.modelId)
 }
 
 private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {
