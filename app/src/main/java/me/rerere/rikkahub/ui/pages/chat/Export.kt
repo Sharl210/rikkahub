@@ -330,7 +330,7 @@ private suspend fun exportToImage(
         }
 
         FileOutputStream(file).use { fos ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 90, fos)
         }
 
         // Save to gallery
@@ -346,7 +346,7 @@ private suspend fun exportToImage(
     } catch (e: Exception) {
         e.printStackTrace()
         withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Failed to export image", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Failed to export image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     } finally {
         bitmap.recycle()
