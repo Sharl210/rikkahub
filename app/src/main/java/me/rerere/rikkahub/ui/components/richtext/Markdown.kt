@@ -11,15 +11,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
@@ -53,11 +56,14 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.net.toUri
+import com.composables.icons.lucide.Check
+import com.composables.icons.lucide.Lucide
 import me.rerere.highlight.HighlightText
 import me.rerere.rikkahub.ui.components.table.ColumnDefinition
 import me.rerere.rikkahub.ui.components.table.ColumnWidth
 import me.rerere.rikkahub.ui.components.table.DataTable
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
+import me.rerere.rikkahub.utils.toDp
 import me.rerere.rikkahub.utils.unescapeHtml
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
@@ -71,7 +77,10 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 
 private val flavour by lazy {
-    GFMFlavourDescriptor()
+    GFMFlavourDescriptor(
+        makeHttpsAutoLinks = true,
+        useSafeLinks = true
+    )
 }
 
 private val parser by lazy {
@@ -126,7 +135,9 @@ private fun MarkdownPreview() {
                             * How many times must a man look up, Before he can see the sky?
                             * How many times $ f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!}(x-a)^n$
                     2. How many times must a man look up, Before he can see the sky?
-                    * Before they're allowed to be free? Yes, 'n' how many times can a man turn his head
+
+                    * [ ] Before they're allowed to be free? Yes, 'n' how many times can a man turn his head
+                    * [x] Before they're allowed to be free? Yes, 'n' how many times can a man turn his head
 
                     4. For in that sleep of death what dreams may come [citation](1)
 
@@ -308,6 +319,31 @@ fun MarkdownNode(
                 onClickCitation = onClickCitation,
                 level = listLevel
             )
+        }
+
+        // Checkbox
+        GFMTokenTypes.CHECK_BOX -> {
+            val isChecked = node.getTextInNode(content).trim() == "[x]"
+            Surface(
+                shape = RoundedCornerShape(2.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                modifier = modifier,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(2.dp)
+                        .size(LocalTextStyle.current.fontSize.toDp() * 0.8f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isChecked) {
+                        Icon(
+                            imageVector = Lucide.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
 
         // 引用块
@@ -606,13 +642,16 @@ private fun ListItemNode(
                     text = bulletText,
                     modifier = Modifier.alignByBaseline()
                 )
-                FlowRow {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     directContent.fastForEach { contentChild ->
                         MarkdownNode(
                             node = contentChild,
                             content = content,
                             onClickCitation = onClickCitation,
-                            listLevel = level
+                            listLevel = level,
                         )
                     }
                 }
@@ -779,6 +818,15 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
     when {
         node.type == MarkdownTokenTypes.BLOCK_QUOTE -> {}
 
+        node.type == GFMTokenTypes.GFM_AUTOLINK -> {
+            val link = node.getTextInNode(content)
+            withLink(LinkAnnotation.Url(link)) {
+                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    append(link)
+                }
+            }
+        }
+
         node is LeafASTNode -> {
             append(
                 node
@@ -843,7 +891,6 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
         }
 
         node.type == MarkdownElementTypes.INLINE_LINK -> {
-            dumpAst(node, content)
             val linkDest =
                 node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
                     ?: ""
@@ -898,6 +945,19 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         )
                     ) {
                         append(linkText)
+                    }
+                }
+            }
+        }
+
+        node.type == MarkdownElementTypes.AUTOLINK -> {
+            val links = node.children
+                .trim(MarkdownTokenTypes.LT, 1)
+                .trim(MarkdownTokenTypes.GT, 1)
+            links.fastForEach { link ->
+                withLink(LinkAnnotation.Url(link.getTextInNode(content))) {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                        append(link.getTextInNode(content))
                     }
                 }
             }
