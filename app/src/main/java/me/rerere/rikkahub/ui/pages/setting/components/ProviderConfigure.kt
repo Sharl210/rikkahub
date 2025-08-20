@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -18,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import kotlin.reflect.KClass
 import kotlin.reflect.full.primaryConstructor
 
@@ -252,31 +254,6 @@ private fun ColumnScope.ProviderConfigureGoogle(
         modifier = Modifier.fillMaxWidth()
     )
 
-    OutlinedTextField(
-        value = provider.apiKey,
-        onValueChange = {
-            onEdit(provider.copy(apiKey = it.trim()))
-        },
-        label = {
-            Text(stringResource(id = R.string.setting_provider_page_api_key))
-        },
-        modifier = Modifier.fillMaxWidth(),
-        maxLines = 3,
-    )
-
-    if (!provider.vertexAI) {
-        OutlinedTextField(
-            value = provider.baseUrl,
-            onValueChange = {
-                onEdit(provider.copy(baseUrl = it.trim()))
-            },
-            label = {
-                Text(stringResource(id = R.string.setting_provider_page_api_base_url))
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-
     Row(
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -289,7 +266,30 @@ private fun ColumnScope.ProviderConfigureGoogle(
         )
     }
 
-    if (provider.vertexAI) {
+    if (!provider.vertexAI) {
+        OutlinedTextField(
+            value = provider.apiKey,
+            onValueChange = {
+                onEdit(provider.copy(apiKey = it.trim()))
+            },
+            label = {
+                Text(stringResource(id = R.string.setting_provider_page_api_key))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 3,
+        )
+
+        OutlinedTextField(
+            value = provider.baseUrl,
+            onValueChange = {
+                onEdit(provider.copy(baseUrl = it.trim()))
+            },
+            label = {
+                Text(stringResource(id = R.string.setting_provider_page_api_base_url))
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    } else {
         OutlinedTextField(
             value = provider.serviceAccountEmail,
             onValueChange = {
@@ -311,6 +311,7 @@ private fun ColumnScope.ProviderConfigureGoogle(
             modifier = Modifier.fillMaxWidth(),
             maxLines = 6,
             minLines = 3,
+            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
         )
         OutlinedTextField(
             value = provider.location,
