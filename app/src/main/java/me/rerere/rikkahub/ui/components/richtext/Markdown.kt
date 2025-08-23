@@ -70,7 +70,6 @@ import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.LeafASTNode
-import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
@@ -380,11 +379,11 @@ fun MarkdownNode(
         // 链接
         MarkdownElementTypes.INLINE_LINK -> {
             val linkText =
-                node.findChildOfType(MarkdownElementTypes.LINK_TEXT)
-                    ?.findChildOfType(GFMTokenTypes.GFM_AUTOLINK, MarkdownTokenTypes.TEXT)
+                node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_TEXT)
+                    ?.findChildOfTypeRecursive(GFMTokenTypes.GFM_AUTOLINK, MarkdownTokenTypes.TEXT)
                     ?.getTextInNode(content) ?: ""
             val linkDest =
-                node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
+                node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
                     ?: ""
             val context = LocalContext.current
             Text(
@@ -449,9 +448,9 @@ fun MarkdownNode(
         // 图片
         MarkdownElementTypes.IMAGE -> {
             val altText =
-                node.findChildOfType(MarkdownElementTypes.LINK_TEXT)?.getTextInNode(content) ?: ""
+                node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_TEXT)?.getTextInNode(content) ?: ""
             val imageUrl =
-                node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
+                node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
                     ?: ""
             Column(
                 modifier = modifier,
@@ -518,10 +517,10 @@ fun MarkdownNode(
                 codeContentEndOffset
             ).trimIndent()
 
-            val language = node.findChildOfType(MarkdownTokenTypes.FENCE_LANG)
+            val language = node.findChildOfTypeRecursive(MarkdownTokenTypes.FENCE_LANG)
                 ?.getTextInNode(content)
                 ?: "plaintext"
-            val hasEnd = node.findChildOfType(MarkdownTokenTypes.CODE_FENCE_END) != null
+            val hasEnd = node.findChildOfTypeRecursive(MarkdownTokenTypes.CODE_FENCE_END) != null
 
             HighlightCodeBlock(
                 code = code,
@@ -609,7 +608,7 @@ private fun OrderedListNode(
         var index = 1
         node.children.fastForEach { child ->
             if (child.type == MarkdownElementTypes.LIST_ITEM) {
-                val numberText = child.findChildOfType(MarkdownTokenTypes.LIST_NUMBER)
+                val numberText = child.findChildOfTypeRecursive(MarkdownTokenTypes.LIST_NUMBER)
                     ?.getTextInNode(content) ?: "$index. "
                 ListItemNode(
                     node = child,
@@ -697,7 +696,7 @@ private fun Paragraph(
     modifier: Modifier,
 ) {
     // dumpAst(node, content)
-    if (node.findChildOfType(MarkdownElementTypes.IMAGE, GFMElementTypes.BLOCK_MATH) != null) {
+    if (node.findChildOfTypeRecursive(MarkdownElementTypes.IMAGE, GFMElementTypes.BLOCK_MATH) != null) {
         FlowRow(modifier = modifier) {
             node.children.fastForEach { child ->
                 MarkdownNode(
@@ -892,11 +891,11 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
 
         node.type == MarkdownElementTypes.INLINE_LINK -> {
             val linkDest =
-                node.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
+                node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content)
                     ?: ""
             val linkText =
-                node.findChildOfType(MarkdownElementTypes.LINK_TEXT)
-                    ?.findChildOfType(GFMTokenTypes.GFM_AUTOLINK, MarkdownTokenTypes.TEXT)
+                node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_TEXT)
+                    ?.findChildOfTypeRecursive(GFMTokenTypes.GFM_AUTOLINK, MarkdownTokenTypes.TEXT)
                     ?.getTextInNode(content)
                     ?: linkDest
             if (linkText == "citation") {
@@ -1056,10 +1055,10 @@ private fun ASTNode.nextSibling(): ASTNode? {
     return null
 }
 
-private fun ASTNode.findChildOfType(vararg types: IElementType): ASTNode? {
+private fun ASTNode.findChildOfTypeRecursive(vararg types: IElementType): ASTNode? {
     if (this.type in types) return this
     for (child in children) {
-        val result = child.findChildOfType(*types)
+        val result = child.findChildOfTypeRecursive(*types)
         if (result != null) return result
     }
     return null
