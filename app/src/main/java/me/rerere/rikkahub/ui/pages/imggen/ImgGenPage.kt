@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.ui.pages.imggen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +43,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -60,7 +63,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.rerere.rikkahub.R
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
@@ -96,11 +101,26 @@ fun ImageGenPage(
     val pagerState = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
 
+    val isGenerating by vm.isGenerating.collectAsStateWithLifecycle()
+    var showCancelDialog by remember { mutableStateOf(false) }
+    BackHandler(isGenerating) {
+        showCancelDialog = true
+    }
+    if (showCancelDialog) {
+        CancelDialog(
+            onDismiss = { showCancelDialog = false },
+            onConfirm = {
+                showCancelDialog = false
+                vm.cancelGeneration()
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("图片生成")
+                    Text(stringResource(R.string.imggen_page_title))
                 },
                 navigationIcon = {
                     BackButton()
@@ -124,6 +144,28 @@ fun ImageGenPage(
 }
 
 @Composable
+private fun CancelDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.imggen_page_cancel_generation_title)) },
+        text = { Text(stringResource(R.string.imggen_page_cancel_generation_message)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.imggen_page_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.imggen_page_cancel))
+            }
+        }
+    )
+}
+
+@Composable
 private fun BottomBar(
     pagerState: PagerState,
     scope: CoroutineScope
@@ -132,7 +174,7 @@ private fun BottomBar(
         NavigationBarItem(
             selected = 0 == pagerState.currentPage,
             label = {
-                Text("图片生成")
+                Text(stringResource(R.string.imggen_page_title))
             },
             icon = {
                 Icon(Lucide.Palette, null)
@@ -147,7 +189,7 @@ private fun BottomBar(
         NavigationBarItem(
             selected = 1 == pagerState.currentPage,
             label = {
-                Text("相册")
+                Text(stringResource(R.string.imggen_page_gallery))
             },
             icon = {
                 Icon(Lucide.Images, null)
@@ -263,7 +305,7 @@ private fun InputBar(
         OutlinedTextField(
             value = prompt,
             onValueChange = vm::updatePrompt,
-            placeholder = { Text("描述您想要生成的图片...") },
+            placeholder = { Text(stringResource(R.string.imggen_page_prompt_placeholder)) },
             modifier = Modifier
                 .weight(1f),
             minLines = 1,
@@ -272,8 +314,13 @@ private fun InputBar(
         )
 
         FilledTonalIconButton(
-            onClick = vm::generateImage,
-            enabled = !isGenerating && prompt.isNotBlank()
+            onClick = {
+                if(!isGenerating) {
+                    vm.generateImage()
+                } else {
+                    vm.cancelGeneration()
+                }
+            },
         ) {
             if (isGenerating) {
                 CircularProgressIndicator(
@@ -283,7 +330,7 @@ private fun InputBar(
             } else {
                 Icon(
                     imageVector = Lucide.Send,
-                    contentDescription = "生成图片"
+                    contentDescription = stringResource(R.string.imggen_page_generate_image)
                 )
             }
         }
@@ -321,7 +368,7 @@ private fun ImageGalleryScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "暂无生成的图片",
+                        text = stringResource(R.string.imggen_page_no_generated_images),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -386,12 +433,12 @@ private fun ImageGalleryScreen(
                                                     try {
                                                         context.saveMessageImage("file://${it.filePath}")
                                                         toaster.show(
-                                                            message = "图片已保存到相册",
+                                                            message = context.getString(R.string.imggen_page_image_saved_success),
                                                             type = ToastType.Success
                                                         )
                                                     } catch (e: Exception) {
                                                         toaster.show(
-                                                            message = "保存失败: ${e.message}",
+                                                            message = context.getString(R.string.imggen_page_save_failed, e.message),
                                                             type = ToastType.Error
                                                         )
                                                     }
@@ -401,7 +448,7 @@ private fun ImageGalleryScreen(
                                         ) {
                                             Icon(
                                                 imageVector = Lucide.Save,
-                                                contentDescription = "保存",
+                                                contentDescription = stringResource(R.string.imggen_page_save),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }
@@ -412,7 +459,7 @@ private fun ImageGalleryScreen(
                                         ) {
                                             Icon(
                                                 imageVector = Lucide.Trash2,
-                                                contentDescription = "删除",
+                                                contentDescription = stringResource(R.string.imggen_page_delete),
                                                 modifier = Modifier.size(16.dp),
                                                 tint = MaterialTheme.colorScheme.error
                                             )
@@ -459,14 +506,14 @@ private fun SettingsBottomSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "图片生成设置",
+                text = stringResource(R.string.imggen_page_settings_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
 
             FormItem(
-                label = { Text("模型选择") },
-                description = { Text("选择用于图片生成的AI模型") }
+                label = { Text(stringResource(R.string.imggen_page_model_selection)) },
+                description = { Text(stringResource(R.string.imggen_page_model_selection_desc)) }
             ) {
                 ModelSelector(
                     modelId = settings.imageGenerationModelId,
@@ -484,8 +531,8 @@ private fun SettingsBottomSheet(
             }
 
             FormItem(
-                label = { Text("生成数量") },
-                description = { Text("每次生成的图片数量") }
+                label = { Text(stringResource(R.string.imggen_page_generation_count)) },
+                description = { Text(stringResource(R.string.imggen_page_generation_count_desc)) }
             ) {
                 OutlinedNumberInput(
                     value = numberOfImages,
@@ -495,8 +542,8 @@ private fun SettingsBottomSheet(
             }
 
             FormItem(
-                label = { Text("图片比例") },
-                description = { Text("选择生成图片的宽高比") }
+                label = { Text(stringResource(R.string.imggen_page_aspect_ratio)) },
+                description = { Text(stringResource(R.string.imggen_page_aspect_ratio_desc)) }
             ) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -508,11 +555,11 @@ private fun SettingsBottomSheet(
                             onClick = { vm.updateAspectRatio(ratio) },
                             label = {
                                 Text(
-                                    when (ratio) {
-                                        ImageAspectRatio.SQUARE -> "1:1 正方形"
-                                        ImageAspectRatio.LANDSCAPE -> "16:9 横屏"
-                                        ImageAspectRatio.PORTRAIT -> "9:16 竖屏"
-                                    }
+                                    stringResource(when (ratio) {
+                                        ImageAspectRatio.SQUARE -> R.string.imggen_page_aspect_ratio_square
+                                        ImageAspectRatio.LANDSCAPE -> R.string.imggen_page_aspect_ratio_landscape
+                                        ImageAspectRatio.PORTRAIT -> R.string.imggen_page_aspect_ratio_portrait
+                                    })
                                 )
                             }
                         )
