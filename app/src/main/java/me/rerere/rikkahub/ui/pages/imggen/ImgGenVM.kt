@@ -4,32 +4,52 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.map
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import me.rerere.ai.provider.ImageGenerationParams
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.ui.ImageAspectRatio
 import me.rerere.ai.ui.ImageGenerationItem
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.db.entity.GenMediaEntity
 import me.rerere.rikkahub.data.repository.GenMediaRepository
 import me.rerere.rikkahub.utils.createImageFileFromBase64
 import me.rerere.rikkahub.utils.getImagesDir
-import me.rerere.rikkahub.utils.listImageFiles
 import java.io.File
-import kotlin.uuid.Uuid
 
 @Serializable
 data class GeneratedImage(
-    val id: String,
+    val id: Int,
     val prompt: String,
     val filePath: String,
     val timestamp: Long,
     val model: String
 )
+
+private fun GenMediaEntity.toGeneratedImage(context: Application): GeneratedImage {
+    val imagesDir = context.getImagesDir()
+    val fullPath = File(imagesDir, this.path.removePrefix("images/")).absolutePath
+
+    return GeneratedImage(
+        id = this.id,
+        prompt = this.prompt,
+        filePath = fullPath,
+        timestamp = this.createAt,
+        model = this.modelId
+    )
+}
 
 class ImgGenVM(
     context: Application,
@@ -43,18 +63,27 @@ class ImgGenVM(
     private val _numberOfImages = MutableStateFlow(1)
     val numberOfImages: StateFlow<Int> = _numberOfImages
 
+    private val _aspectRatio = MutableStateFlow(ImageAspectRatio.SQUARE)
+    val aspectRatio: StateFlow<ImageAspectRatio> = _aspectRatio
+
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    private val _generatedImages = MutableStateFlow<List<GeneratedImage>>(emptyList())
-    val generatedImages: StateFlow<List<GeneratedImage>> = _generatedImages
+    private val _currentGeneratedImages = MutableStateFlow<List<GeneratedImage>>(emptyList())
+    val currentGeneratedImages: StateFlow<List<GeneratedImage>> = _currentGeneratedImages
 
-    init {
-        loadGeneratedImages()
-    }
+    val pager = Pager(
+        config = PagingConfig(pageSize = 20, enablePlaceholders = false),
+        pagingSourceFactory = { genMediaRepository.getAllMedia() }
+    )
+    val generatedImages: Flow<PagingData<GeneratedImage>> = pager.flow
+        .map { pagingData ->
+            pagingData.map { entity -> entity.toGeneratedImage(getApplication()) }
+        }
+        .cachedIn(viewModelScope)
 
     fun updatePrompt(prompt: String) {
         _prompt.value = prompt
@@ -62,6 +91,10 @@ class ImgGenVM(
 
     fun updateNumberOfImages(count: Int) {
         _numberOfImages.value = count.coerceIn(1, 4)
+    }
+
+    fun updateAspectRatio(aspectRatio: ImageAspectRatio) {
+        _aspectRatio.value = aspectRatio
     }
 
     fun clearError() {
@@ -73,6 +106,7 @@ class ImgGenVM(
             try {
                 _isGenerating.value = true
                 _error.value = null
+                _currentGeneratedImages.value = emptyList()
 
                 val settings = settingsStore.settingsFlow.first()
                 val model = settings.findModelById(settings.imageGenerationModelId)
@@ -87,7 +121,8 @@ class ImgGenVM(
                 val params = ImageGenerationParams(
                     model = model,
                     prompt = _prompt.value,
-                    numOfImages = _numberOfImages.value
+                    numOfImages = _numberOfImages.value,
+                    aspectRatio = _aspectRatio.value
                 )
 
                 val result = providerManager.getProviderByType(provider)
@@ -103,7 +138,7 @@ class ImgGenVM(
                         index = index
                     )
                     val generatedImage = GeneratedImage(
-                        id = Uuid.random().toString(),
+                        id = 0, // Will be updated after database insertion
                         prompt = _prompt.value,
                         filePath = imageFile.absolutePath,
                         timestamp = System.currentTimeMillis(),
@@ -112,8 +147,7 @@ class ImgGenVM(
                     newImages.add(generatedImage)
                 }
 
-                _generatedImages.value = newImages + _generatedImages.value
-
+                _currentGeneratedImages.value = newImages
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to generate image", e)
                 _error.value = e.message ?: "Unknown error occurred"
@@ -123,7 +157,12 @@ class ImgGenVM(
         }
     }
 
-    private fun saveImageToStorage(item: ImageGenerationItem, prompt: String, modelName: String, index: Int): File {
+    private suspend fun saveImageToStorage(
+        item: ImageGenerationItem,
+        prompt: String,
+        modelName: String,
+        index: Int
+    ): File {
         val context = getApplication<Application>()
         val imagesDir = context.getImagesDir()
 
@@ -131,43 +170,31 @@ class ImgGenVM(
         val filename = "${timestamp}_${modelName}_$index.png"
         val imageFile = File(imagesDir, filename)
 
-        return context.createImageFileFromBase64(item.data, imageFile.absolutePath)
-    }
+        val createdFile = context.createImageFileFromBase64(item.data, imageFile.absolutePath)
 
-    fun loadGeneratedImages() {
-        viewModelScope.launch {
-            try {
-                val context = getApplication<Application>()
-                val imageFiles = context.listImageFiles()
+        // Save to database with relative path
+        val relativePath = "images/${imageFile.name}"
+        val entity = GenMediaEntity(
+            path = relativePath,
+            modelId = modelName,
+            prompt = prompt,
+            createAt = timestamp
+        )
+        genMediaRepository.insertMedia(entity)
 
-                val images = imageFiles.map { file ->
-                    // Parse filename to extract metadata
-                    val parts = file.nameWithoutExtension.split("_")
-                    val timestamp = parts.getOrNull(0)?.toLongOrNull() ?: file.lastModified()
-                    val model = if (parts.size > 1) parts.subList(1, parts.size - 1).joinToString("_") else "Unknown"
-
-                    GeneratedImage(
-                        id = file.name,
-                        prompt = "Generated Image",
-                        filePath = file.absolutePath,
-                        timestamp = timestamp,
-                        model = model
-                    )
-                }.sortedByDescending { it.timestamp }
-
-                _generatedImages.value = images
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load generated images", e)
-            }
-        }
+        return createdFile
     }
 
     fun deleteImage(image: GeneratedImage) {
         viewModelScope.launch {
             try {
+                // Delete from database first
+                genMediaRepository.deleteMedia(image.id)
+
+                // Then delete the file
                 val file = File(image.filePath)
-                if (file.exists() && file.delete()) {
-                    _generatedImages.value = _generatedImages.value.filter { it.id != image.id }
+                if (file.exists()) {
+                    file.delete()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete image", e)
