@@ -22,10 +22,12 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,8 +35,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -58,16 +58,19 @@ import com.composables.icons.lucide.Images
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Palette
 import com.composables.icons.lucide.Save
+import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Trash2
+import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.ModelType
-import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.ui.components.ai.ModelSelector
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.saveMessageImage
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
@@ -79,7 +82,6 @@ fun ImageGenPage(
 ) {
     val pagerState = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
         topBar = {
@@ -95,15 +97,14 @@ fun ImageGenPage(
         bottomBar = {
             BottomBar(pagerState, scope)
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
             modifier = modifier.padding(innerPadding)
         ) { page ->
             when (page) {
-                0 -> ImageGenScreen(vm, snackbarHostState)
-                1 -> ImageGalleryScreen(vm, snackbarHostState)
+                0 -> ImageGenScreen(vm)
+                1 -> ImageGalleryScreen(vm)
             }
         }
     }
@@ -150,7 +151,6 @@ private fun BottomBar(
 @Composable
 private fun ImageGenScreen(
     vm: ImgGenVM,
-    snackbarHostState: SnackbarHostState
 ) {
     val prompt by vm.prompt.collectAsStateWithLifecycle()
     val numberOfImages by vm.numberOfImages.collectAsStateWithLifecycle()
@@ -159,139 +159,135 @@ private fun ImageGenScreen(
     val error by vm.error.collectAsStateWithLifecycle()
     val settings by vm.settingsStore.settingsFlow.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
 
     LaunchedEffect(error) {
         error?.let { errorMessage ->
-            snackbarHostState.showSnackbar(errorMessage)
+            toaster.show(message = errorMessage, type = ToastType.Error)
             vm.clearError()
         }
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .imePadding(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.padding(16.dp)
     ) {
-        if (generatedImages.isNotEmpty() && generatedImages.take(2).isNotEmpty()) {
-            item {
-                Text(
-                    text = "最新生成",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+        Row(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            generatedImages.take(2).forEach { image ->
+                var showPreview by remember { mutableStateOf(false) }
+
+                AsyncImage(
+                    model = File(image.filePath),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showPreview = true },
+                    contentScale = ContentScale.Crop
                 )
-            }
 
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    generatedImages.take(2).forEach { image ->
-                        var showPreview by remember { mutableStateOf(false) }
-
-                        AsyncImage(
-                            model = File(image.filePath),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .weight(1f)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { showPreview = true },
-                            contentScale = ContentScale.Crop
-                        )
-
-                        if (showPreview) {
-                            ImagePreviewDialog(
-                                images = listOf(image.filePath),
-                                onDismissRequest = { showPreview = false },
-                            )
-                        }
-                    }
+                if (showPreview) {
+                    ImagePreviewDialog(
+                        images = listOf(image.filePath),
+                        onDismissRequest = { showPreview = false },
+                    )
                 }
             }
         }
+        InputBar(
+            prompt = prompt,
+            vm = vm,
+            isGenerating = isGenerating,
+            settings = settings,
+            scope = scope,
+            numberOfImages = numberOfImages
+        )
+    }
+}
 
-        item {
-            Text(
-                text = "模型选择",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+@Composable
+private fun InputBar(
+    prompt: String,
+    vm: ImgGenVM,
+    isGenerating: Boolean,
+    settings: Settings,
+    scope: CoroutineScope,
+    numberOfImages: Int
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // 第一行：输入框和发送按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            OutlinedTextField(
+                value = prompt,
+                onValueChange = vm::updatePrompt,
+                placeholder = { Text("描述您想要生成的图片...") },
+                modifier = Modifier.weight(1f),
+                minLines = 1,
+                maxLines = 5,
+                shape = CircleShape,
             )
-        }
 
-        item {
-            FormItem(
-                label = { Text("AI 模型") }
-            ) {
-                ModelSelector(
-                    modelId = settings.imageGenerationModelId,
-                    providers = settings.providers,
-                    type = ModelType.IMAGE,
-                    modifier = Modifier.fillMaxWidth(),
-                    onSelect = { model ->
-                        scope.launch {
-                            vm.settingsStore.update { oldSettings ->
-                                oldSettings.copy(imageGenerationModelId = model.id)
-                            }
-                        }
-                    }
-                )
-            }
-        }
-
-        item {
-            Text(
-                text = "生成设置",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        item {
-            FormItem(
-                label = { Text("提示词") }
-            ) {
-                OutlinedTextField(
-                    value = prompt,
-                    onValueChange = vm::updatePrompt,
-                    placeholder = { Text("描述您想要生成的图片...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    maxLines = 6
-                )
-            }
-        }
-
-        item {
-            FormItem(
-                label = { Text("图片数量") }
-            ) {
-                OutlinedNumberInput(
-                    value = numberOfImages,
-                    onValueChange = vm::updateNumberOfImages,
-                    modifier = Modifier.width(120.dp)
-                )
-            }
-        }
-
-        item {
-            Button(
+            FilledTonalIconButton(
                 onClick = vm::generateImage,
-                enabled = !isGenerating && prompt.isNotBlank() && settings.imageGenerationModelId != null,
-                modifier = Modifier.fillMaxWidth()
+                enabled = !isGenerating && prompt.isNotBlank()
             ) {
                 if (isGenerating) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("生成中...")
                 } else {
-                    Text("生成图片")
+                    Icon(
+                        imageVector = Lucide.Send,
+                        contentDescription = "生成图片"
+                    )
                 }
+            }
+        }
+
+        // 第二行：配置
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ModelSelector(
+                modelId = settings.imageGenerationModelId,
+                providers = settings.providers,
+                type = ModelType.IMAGE,
+                onlyIcon = true,
+                onSelect = { model ->
+                    scope.launch {
+                        vm.settingsStore.update { oldSettings ->
+                            Settings(imageGenerationModelId = model.id)
+                        }
+                    }
+                }
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "数量:",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedNumberInput(
+                    value = numberOfImages,
+                    onValueChange = vm::updateNumberOfImages,
+                    modifier = Modifier.width(80.dp)
+                )
             }
         }
     }
@@ -300,11 +296,11 @@ private fun ImageGenScreen(
 @Composable
 private fun ImageGalleryScreen(
     vm: ImgGenVM,
-    snackbarHostState: SnackbarHostState
 ) {
     val generatedImages by vm.generatedImages.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
 
     if (generatedImages.isEmpty()) {
         Box(
@@ -354,16 +350,13 @@ private fun ImageGalleryScreen(
                             contentScale = ContentScale.Crop
                         )
 
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
+                            Column {
                                 Text(
                                     text = image.model,
                                     style = MaterialTheme.typography.labelSmall,
@@ -372,7 +365,8 @@ private fun ImageGalleryScreen(
                                 Text(
                                     text = image.prompt.take(20) + if (image.prompt.length > 20) "..." else "",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2
                                 )
                             }
 
@@ -382,9 +376,9 @@ private fun ImageGalleryScreen(
                                         scope.launch {
                                             try {
                                                 context.saveMessageImage("file://${image.filePath}")
-                                                snackbarHostState.showSnackbar("图片已保存到相册")
+                                                toaster.show(message = "图片已保存到相册", type = ToastType.Success)
                                             } catch (e: Exception) {
-                                                snackbarHostState.showSnackbar("保存失败: ${e.message}")
+                                                toaster.show(message = "保存失败: ${e.message}", type = ToastType.Error)
                                             }
                                         }
                                     },
