@@ -17,9 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.dokar.sonner.ToastType
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.reflect.KClass
 import kotlin.reflect.full.primaryConstructor
 
@@ -95,6 +98,8 @@ private fun ColumnScope.ProviderConfigureOpenAI(
     provider: ProviderSetting.OpenAI,
     onEdit: (provider: ProviderSetting.OpenAI) -> Unit
 ) {
+    val toaster = LocalToaster.current
+
     provider.description()
 
     Row(
@@ -161,10 +166,18 @@ private fun ColumnScope.ProviderConfigureOpenAI(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(stringResource(id = R.string.setting_provider_page_response_api), modifier = Modifier.weight(1f))
+        val responseAPIWarning = stringResource(id = R.string.setting_provider_page_response_api_warning)
         Checkbox(
             checked = provider.useResponseApi,
             onCheckedChange = {
                 onEdit(provider.copy(useResponseApi = it))
+
+                if(it && provider.baseUrl.toHttpUrlOrNull()?.host != "api.openai.com") {
+                    toaster.show(
+                        message = responseAPIWarning,
+                        type = ToastType.Warning
+                    )
+                }
             }
         )
     }
@@ -287,7 +300,13 @@ private fun ColumnScope.ProviderConfigureGoogle(
             label = {
                 Text(stringResource(id = R.string.setting_provider_page_api_base_url))
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            isError = !provider.baseUrl.endsWith("/v1beta"),
+            supportingText = if (!provider.baseUrl.endsWith("/v1beta")) {
+                {
+                    Text("The base URL usually ends with `/v1beta`")
+                }
+            } else null
         )
     } else {
         OutlinedTextField(
