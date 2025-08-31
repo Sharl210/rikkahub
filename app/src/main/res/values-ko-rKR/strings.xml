@@ -188,6 +188,8 @@
   <string name="chat_page_export_share_via">공유 방법</string>
   <string name="chat_page_export_success">%1$s(으)로 내보내기 완료</string>
   <string name="chat_page_history">채팅 기록</string>
+  <string name="chat_page_learning_mode">학습 모드</string>
+  <string name="chat_page_learning_mode_desc">지식을 단계별로 배울 수 있도록 도와드립니다</string>
   <string name="chat_page_new_chat">새 채팅</string>
   <string name="chat_page_new_message">새 메시지</string>
   <string name="chat_page_nickname_placeholder">이름을 입력하세요</string>
@@ -219,6 +221,7 @@
   <string name="emoji_picker_search_placeholder">이모지 검색...</string>
   <string name="emoji_picker_select_skin_tone">스킨 톤 선택</string>
   <string name="expand_translation">번역 확장</string>
+  <string name="export_image_warning">위 내용은 인공지능이 생성한 것으로 부정확할 수 있습니다.</string>
   <string name="history_page_cancel">취소</string>
   <string name="history_page_clear">지우기</string>
   <string name="history_page_conversation_deleted">대화 삭제됨</string>
