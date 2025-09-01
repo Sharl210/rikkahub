@@ -413,7 +413,7 @@ private fun Model.findModelProviderFromList(providers: List<ProviderSetting>): P
 
 private val SILICONFLOW_QWEN3_8B_ID = Uuid.parse("dd82297e-4237-4d3c-85b3-58d5c7084fc2")
 
-private val DEFAULT_PROVIDERS = listOf(
+val DEFAULT_PROVIDERS = listOf(
     ProviderSetting.OpenAI(
         id = Uuid.parse("1eeea727-9ee5-4cae-93e6-6fb01a4d051e"),
         name = "OpenAI",
@@ -473,7 +473,12 @@ private val DEFAULT_PROVIDERS = listOf(
         name = "DeepSeek",
         baseUrl = "https://api.deepseek.com/v1",
         apiKey = "",
-        builtIn = true
+        builtIn = true,
+        balanceOption = BalanceOption(
+            enabled = true,
+            apiPath = "/user/balance",
+            resultPath = "balance_infos[0].total_balance"
+        )
     ),
     ProviderSetting.OpenAI(
         id = Uuid.parse("d5734028-d39b-4d41-9841-fd648d65440e"),
@@ -484,7 +489,7 @@ private val DEFAULT_PROVIDERS = listOf(
         balanceOption = BalanceOption(
             enabled = true,
             apiPath = "/credits",
-            resultPath = "data.total_usage",
+            resultPath = "data.total_credits - data.total_usage",
         )
     ),
     ProviderSetting.OpenAI(

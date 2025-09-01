@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,14 +26,19 @@ import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.RotateCw
 import me.rerere.ai.provider.BalanceOption
+import me.rerere.ai.provider.ProviderSetting
+import me.rerere.common.http.isJsonExprValid
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.DEFAULT_PROVIDERS
+import me.rerere.rikkahub.ui.theme.JetbrainsMono
 
-private val JsonKeyRegex = Regex("""^[^.\s\[\]]+(?:\.[^.\s\[\]]+)*$""")
 private val ApiPathRegex = Regex("""^/[^ \t\n\r]*$""")
 
 @Composable
 fun SettingProviderBalanceOption(
+    provider: ProviderSetting,
     balanceOption: BalanceOption,
     modifier: Modifier = Modifier,
     onEdit: (BalanceOption) -> Unit,
@@ -88,22 +94,23 @@ fun SettingProviderBalanceOption(
                     value = balanceOption.resultPath,
                     onValueChange = { onEdit(balanceOption.copy(resultPath = it)) },
                     label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
-                    isError = !balanceOption.resultPath.matches(JsonKeyRegex),
-                    modifier = Modifier.fillMaxWidth()
+                    isError = !isJsonExprValid(balanceOption.resultPath),
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono)
                 )
+                IconButton(
+                    onClick = {
+                        val defaultProvider = DEFAULT_PROVIDERS.find { it.id == provider.id }
+                        if (defaultProvider != null) {
+                            onEdit(defaultProvider.balanceOption.copy())
+                        } else {
+                            onEdit(BalanceOption())
+                        }
+                    }
+                ) {
+                    Icon(Lucide.RotateCw, null)
+                }
             }
         }
-    }
-}
-
-@Preview
-@Composable
-private fun BalanceOptionPreview() {
-    var balanceOption by remember { mutableStateOf(BalanceOption()) }
-    Surface {
-        SettingProviderBalanceOption(
-            balanceOption = balanceOption,
-            onEdit = { balanceOption = it }
-        )
     }
 }
