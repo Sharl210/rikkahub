@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -59,6 +61,7 @@ import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.ChevronsDown
 import com.composables.icons.lucide.ChevronsUp
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.MousePointer2
 import com.composables.icons.lucide.X
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -73,6 +76,7 @@ import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.ui.components.message.ChatMessage
 import me.rerere.rikkahub.ui.components.ui.ListSelectableItem
+import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.ui.hooks.ImeLazyListAutoScroller
 import me.rerere.rikkahub.utils.plus
 import kotlin.uuid.Uuid
@@ -254,7 +258,7 @@ fun ChatList(
             visible = selecting,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 48.dp),
+                .offset(-ScreenOffset),
             enter = slideInVertically(
                 initialOffsetY = { it * 2 },
             ),
@@ -265,25 +269,54 @@ fun ChatList(
             HorizontalFloatingToolbar(
                 expanded = true,
             ) {
-                IconButton(
-                    onClick = {
-                        selecting = false
-                        selectedItems.clear()
+                Tooltip(
+                    tooltip = {
+                        Text("Clear selection")
                     }
                 ) {
-                    Icon(Lucide.X, null)
-                }
-                FilledIconButton(
-                    onClick = {
-                        selecting = false
-                        val messages =
-                            conversation.messageNodes.filter { it.id in selectedItems && it.currentMessage.isValidToShowActions() }
-                        if (messages.isNotEmpty()) {
-                            showExportSheet = true
+                    IconButton(
+                        onClick = {
+                            selecting = false
+                            selectedItems.clear()
                         }
+                    ) {
+                        Icon(Lucide.X, null)
+                    }
+                }
+                Tooltip(
+                    tooltip = {
+                        Text("Select all")
                     }
                 ) {
-                    Icon(Lucide.Check, null)
+                    IconButton(
+                        onClick = {
+                            if (selectedItems.isNotEmpty()) {
+                                selectedItems.clear()
+                            } else {
+                                selectedItems.addAll(conversation.messageNodes.map { it.id })
+                            }
+                        }
+                    ) {
+                        Icon(Lucide.MousePointer2, null)
+                    }
+                }
+                Tooltip(
+                    tooltip = {
+                        Text("Confirm")
+                    }
+                ) {
+                    FilledIconButton(
+                        onClick = {
+                            selecting = false
+                            val messages =
+                                conversation.messageNodes.filter { it.id in selectedItems && it.currentMessage.isValidToShowActions() }
+                            if (messages.isNotEmpty()) {
+                                showExportSheet = true
+                            }
+                        }
+                    ) {
+                        Icon(Lucide.Check, null)
+                    }
                 }
             }
         }
