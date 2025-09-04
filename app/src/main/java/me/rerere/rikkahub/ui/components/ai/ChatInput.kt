@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.components.ai
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -24,23 +25,29 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +64,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +78,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -94,6 +103,7 @@ import com.composables.icons.lucide.Image
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.X
+import com.composables.icons.lucide.Zap
 import com.dokar.sonner.ToastType
 import com.meticha.permissions_compose.AppPermission
 import com.meticha.permissions_compose.rememberAppPermissionState
@@ -119,6 +129,7 @@ import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.mcp.McpManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.QuickMessage
 import me.rerere.rikkahub.ui.components.ui.KeepScreenOn
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
@@ -267,6 +278,14 @@ fun ChatInput(
         }
     }
 
+    // Collapse when ime is visible
+    val imeVisile = WindowInsets.isImeVisible
+    LaunchedEffect(imeVisile) {
+        if (imeVisile) {
+            expand = ExpandState.Collapsed
+        }
+    }
+
     Surface(
         color = Color.Transparent,
     ) {
@@ -277,197 +296,10 @@ fun ChatInput(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // Medias
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .horizontalScroll(rememberScrollState())
-            ) {
-                state.messageContent.filterIsInstance<UIMessagePart.Image>().fastForEach { image ->
-                    Box {
-                        Surface(
-                            modifier = Modifier.size(48.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            tonalElevation = 4.dp
-                        ) {
-                            AsyncImage(
-                                model = image.url,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        Icon(
-                            imageVector = Lucide.X,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .size(20.dp)
-                                .clickable {
-                                    // Remove image
-                                    state.messageContent =
-                                        state.messageContent.filterNot { it == image }
-                                    // Delete image
-                                    context.deleteChatFiles(listOf(image.url.toUri()))
-                                }
-                                .align(Alignment.TopEnd)
-                                .background(MaterialTheme.colorScheme.secondary),
-                            tint = MaterialTheme.colorScheme.onSecondary
-                        )
-                    }
-                }
-                state.messageContent.filterIsInstance<UIMessagePart.Document>()
-                    .fastForEach { document ->
-                        Box {
-                            Surface(
-                                modifier = Modifier
-                                    .height(48.dp)
-                                    .widthIn(max = 128.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                tonalElevation = 4.dp
-                            ) {
-                                CompositionLocalProvider(
-                                    LocalContentColor provides MaterialTheme.colorScheme.onSurface.copy(
-                                        0.8f
-                                    )
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(4.dp)
-                                    ) {
-                                        Text(
-                                            text = document.fileName,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            }
-                            Icon(
-                                imageVector = Lucide.X,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .size(20.dp)
-                                    .clickable {
-                                        // Remove image
-                                        state.messageContent =
-                                            state.messageContent.filterNot { it == document }
-                                        // Delete image
-                                        context.deleteChatFiles(listOf(document.url.toUri()))
-                                    }
-                                    .align(Alignment.TopEnd)
-                                    .background(MaterialTheme.colorScheme.secondary),
-                                tint = MaterialTheme.colorScheme.onSecondary
-                            )
-                        }
-                    }
-            }
+            MediaFileInputRow(state = state, context = context)
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-            ) {
-                // TextField
-                Surface(
-                    shape = RoundedCornerShape(32.dp),
-                    tonalElevation = 4.dp,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column {
-                        if (state.isEditing()) {
-                            Surface(
-                                tonalElevation = 8.dp
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.editing),
-                                    )
-                                    Spacer(Modifier.weight(1f))
-                                    Icon(
-                                        Lucide.X, stringResource(R.string.cancel_edit),
-                                        modifier = Modifier
-                                            .clickable {
-                                                state.clearInput()
-                                            }
-                                    )
-                                }
-                            }
-                        }
-                        var isFocused by remember { mutableStateOf(false) }
-                        var isFullScreen by remember { mutableStateOf(false) }
-                        val receiveContentListener = remember {
-                            ReceiveContentListener { transferableContent ->
-                                when {
-                                    transferableContent.hasMediaType(MediaType.Image) -> {
-                                        transferableContent.consume { item ->
-                                            val uri = item.uri
-                                            if (uri != null) {
-                                                state.addImages(
-                                                    context.createChatFilesByContents(
-                                                        listOf(
-                                                            uri
-                                                        )
-                                                    )
-                                                )
-                                            }
-                                            uri != null
-                                        }
-                                    }
-
-                                    else -> transferableContent
-                                }
-                            }
-                        }
-                        TextField(
-                            value = text.text,
-                            onValueChange = { state.setMessageText(it) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .contentReceiver(receiveContentListener)
-                                .onFocusChanged {
-                                    isFocused = it.isFocused
-                                    if (isFocused) {
-                                        expand = ExpandState.Collapsed
-                                    }
-                                },
-                            shape = RoundedCornerShape(32.dp),
-                            placeholder = {
-                                Text(stringResource(R.string.chat_input_placeholder))
-                            },
-                            maxLines = 5,
-                            colors = TextFieldDefaults.colors().copy(
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                            ),
-                            trailingIcon = {
-                                if (isFocused) {
-                                    IconButton(
-                                        onClick = {
-                                            isFullScreen = !isFullScreen
-                                        }
-                                    ) {
-                                        Icon(Lucide.Fullscreen, null)
-                                    }
-                                }
-                            }
-                        )
-                        if (isFullScreen) {
-                            FullScreenEditor(text, state) {
-                                isFullScreen = false
-                            }
-                        }
-                    }
-                }
-            }
+            // Text Input Row
+            TextInputRow(state = state, context = context, text = text)
 
             // Actions Row
             Row(
@@ -603,6 +435,261 @@ fun ChatInput(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TextInputRow(
+    state: ChatInputState,
+    context: Context,
+    text: UIMessagePart.Text,
+) {
+    val assistant = LocalSettings.current.getCurrentAssistant()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+    ) {
+        // TextField
+        Surface(
+            shape = RoundedCornerShape(32.dp),
+            tonalElevation = 4.dp,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column {
+                if (state.isEditing()) {
+                    Surface(
+                        tonalElevation = 8.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.editing),
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Icon(
+                                Lucide.X, stringResource(R.string.cancel_edit),
+                                modifier = Modifier
+                                    .clickable {
+                                        state.clearInput()
+                                    }
+                            )
+                        }
+                    }
+                }
+                var isFocused by remember { mutableStateOf(false) }
+                var isFullScreen by remember { mutableStateOf(false) }
+                val receiveContentListener = remember {
+                    ReceiveContentListener { transferableContent ->
+                        when {
+                            transferableContent.hasMediaType(MediaType.Image) -> {
+                                transferableContent.consume { item ->
+                                    val uri = item.uri
+                                    if (uri != null) {
+                                        state.addImages(
+                                            context.createChatFilesByContents(
+                                                listOf(
+                                                    uri
+                                                )
+                                            )
+                                        )
+                                    }
+                                    uri != null
+                                }
+                            }
+
+                            else -> transferableContent
+                        }
+                    }
+                }
+                TextField(
+                    value = text.text,
+                    onValueChange = { state.setMessageText(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .contentReceiver(receiveContentListener)
+                        .onFocusChanged {
+                            isFocused = it.isFocused
+                        },
+                    shape = RoundedCornerShape(32.dp),
+                    placeholder = {
+                        Text(stringResource(R.string.chat_input_placeholder))
+                    },
+                    maxLines = 5,
+                    colors = TextFieldDefaults.colors().copy(
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                    ),
+                    trailingIcon = {
+                        if (isFocused) {
+                            IconButton(
+                                onClick = {
+                                    isFullScreen = !isFullScreen
+                                }
+                            ) {
+                                Icon(Lucide.Fullscreen, null)
+                            }
+                        }
+                    },
+                    leadingIcon = if(assistant.quickMessages.isNotEmpty() && text.text.isEmpty()) {
+                        {
+                            QuickMessageButton(assistant = assistant, state = state)
+                        }
+                    } else null,
+                )
+                if (isFullScreen) {
+                    FullScreenEditor(text, state) {
+                        isFullScreen = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickMessageButton(
+    assistant: Assistant,
+    state: ChatInputState,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    IconButton(
+        onClick = {
+            expanded = !expanded
+        }
+    ) {
+        Icon(Lucide.Zap, null)
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.widthIn(min = 200.dp).width(IntrinsicSize.Min)
+        ) {
+            assistant.quickMessages.forEach { quickMessage ->
+                Surface(
+                    onClick = {
+                        state.setMessageText(quickMessage.content)
+                    },
+                    color = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Text(
+                            text = quickMessage.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = quickMessage.content,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaFileInputRow(
+    state: ChatInputState,
+    context: Context
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .horizontalScroll(rememberScrollState())
+    ) {
+        state.messageContent.filterIsInstance<UIMessagePart.Image>().fastForEach { image ->
+            Box {
+                Surface(
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    tonalElevation = 4.dp
+                ) {
+                    AsyncImage(
+                        model = image.url,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Icon(
+                    imageVector = Lucide.X,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .size(20.dp)
+                        .clickable {
+                            // Remove image
+                            state.messageContent =
+                                state.messageContent.filterNot { it == image }
+                            // Delete image
+                            context.deleteChatFiles(listOf(image.url.toUri()))
+                        }
+                        .align(Alignment.TopEnd)
+                        .background(MaterialTheme.colorScheme.secondary),
+                    tint = MaterialTheme.colorScheme.onSecondary
+                )
+            }
+        }
+        state.messageContent.filterIsInstance<UIMessagePart.Document>()
+            .fastForEach { document ->
+                Box {
+                    Surface(
+                        modifier = Modifier
+                            .height(48.dp)
+                            .widthIn(max = 128.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        tonalElevation = 4.dp
+                    ) {
+                        CompositionLocalProvider(
+                            LocalContentColor provides MaterialTheme.colorScheme.onSurface.copy(
+                                0.8f
+                            )
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(4.dp)
+                            ) {
+                                Text(
+                                    text = document.fileName,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                    Icon(
+                        imageVector = Lucide.X,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .size(20.dp)
+                            .clickable {
+                                // Remove image
+                                state.messageContent =
+                                    state.messageContent.filterNot { it == document }
+                                // Delete image
+                                context.deleteChatFiles(listOf(document.url.toUri()))
+                            }
+                            .align(Alignment.TopEnd)
+                            .background(MaterialTheme.colorScheme.secondary),
+                        tint = MaterialTheme.colorScheme.onSecondary
+                    )
+                }
+            }
     }
 }
 
@@ -807,8 +894,7 @@ private fun useCropLauncher(
                     UCropActivity.ROTATE,
                     UCropActivity.NONE
                 )
-                setCompressionQuality(90)
-                setCompressionFormat(Bitmap.CompressFormat.WEBP_LOSSLESS)
+                setCompressionFormat(Bitmap.CompressFormat.PNG)
             })
             .withMaxResultSize(4096, 4096)
             .getIntent(context)
