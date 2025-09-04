@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -66,16 +69,18 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
+import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.hooks.EditState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.useEditState
+import me.rerere.rikkahub.ui.modifier.onClick
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantImporter
 import me.rerere.rikkahub.ui.theme.extendColors
 import org.koin.androidx.compose.koinViewModel
 import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
+import sh.calvin.reorderable.rememberReorderableLazyStaggeredGridState
 import kotlin.uuid.Uuid
 
 @Composable
@@ -128,24 +133,14 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                 .consumeWindowInsets(it),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val lazyListState = rememberLazyListState()
+            val lazyListState = rememberLazyStaggeredGridState()
             val isFiltering = selectedTagIds.isNotEmpty()
-            val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-                // 只有在没有过滤时才允许重排序
+            val reorderableState = rememberReorderableLazyStaggeredGridState(lazyListState) { from, to ->
                 if (!isFiltering) {
-                    // 需要考虑标签过滤器可能占用的位置
-                    val hasTagFilter = settings.assistantTags.isNotEmpty()
-                    val offset = if (hasTagFilter) 1 else 0
-
-                    val fromIndex = from.index - offset
-                    val toIndex = to.index - offset
-
-                    if (fromIndex >= 0 && toIndex >= 0 && fromIndex < settings.assistants.size && toIndex < settings.assistants.size) {
-                        val newAssistants = settings.assistants.toMutableList().apply {
-                            add(toIndex, removeAt(fromIndex))
-                        }
-                        vm.updateSettings(settings.copy(assistants = newAssistants))
+                    val newAssistants = settings.assistants.toMutableList().apply {
+                        add(to.index, removeAt(from.index))
                     }
+                    vm.updateSettings(settings.copy(assistants = newAssistants))
                 }
             }
             val haptic = LocalHapticFeedback.current
@@ -156,7 +151,7 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
-                    items(items = settings.assistantTags, key = { tag -> tag.id }) { tag ->
+                    lazyItems(items = settings.assistantTags, key = { tag -> tag.id }) { tag ->
                         FilterChip(
                             onClick = {
                                 selectedTagIds = if (tag.id in selectedTagIds) {
@@ -173,11 +168,15 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+            LazyVerticalStaggeredGrid(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                state = lazyListState
+                verticalItemSpacing = 8.dp,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                state = lazyListState,
+                columns = StaggeredGridCells.Fixed(2)
             ) {
                 items(filteredAssistants, key = { assistant -> assistant.id }) { assistant ->
                     ReorderableItem(
@@ -202,6 +201,7 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                             },
                             modifier = Modifier
                                 .scale(if (isDragging) 0.95f else 1f)
+                                .fillMaxWidth()
                                 .animateItem(),
                             dragHandle = {
                                 // 只有在没有过滤时才显示拖拽手柄
@@ -319,41 +319,43 @@ private fun AssistantItem(
     var showDeleteDialog by remember { mutableStateOf(false) }
     Card(
         modifier = modifier.fillMaxWidth(),
+        onClick = onEdit
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Basic Info
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 UIAvatar(
                     name = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
                     value = assistant.avatar,
+                    modifier = Modifier.size(36.dp)
                 )
-
-                Text(
-                    text = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
-                    style = MaterialTheme.typography.titleLarge
-                )
-
-                if (assistant.enableMemory) {
-                    Tag(
-                        type = TagType.SUCCESS
-                    ) {
-                        Text(stringResource(R.string.assistant_page_memory_count, memories.size))
-                    }
-                }
-
-                Spacer(Modifier.weight(1f))
-
+                Spacer(modifier = Modifier.weight(1f))
                 dragHandle()
             }
 
-            // Tags
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (assistant.enableMemory) {
+                    Tag(type = TagType.SUCCESS) {
+                        Text(stringResource(R.string.assistant_page_memory_count, memories.size))
+                    }
+                }
+            }
+
             if (assistant.tags.isNotEmpty()) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -363,7 +365,7 @@ private fun AssistantItem(
                 ) {
                     assistant.tags.fastForEach { tagId ->
                         val tag = settings.assistantTags.find { it.id == tagId }
-                            ?: return@fastForEach // 如果找不到标签，则跳过
+                            ?: return@fastForEach
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = MaterialTheme.colorScheme.tertiaryContainer,
@@ -380,56 +382,34 @@ private fun AssistantItem(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Right
-                IconButton(
-                    onClick = {
-                        showDeleteDialog = true
-                    },
-                    enabled = assistant.id !in DEFAULT_ASSISTANTS_IDS
-                ) {
-                    Icon(
-                        imageVector = Lucide.Trash2,
-                        contentDescription = stringResource(R.string.assistant_page_delete),
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(18.dp),
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.65f),
-                    )
-                }
-
-                TextButton(
-                    onClick = {
-                        onCopy()
+                if(assistant.id !in DEFAULT_ASSISTANTS_IDS) {
+                    Tooltip(tooltip = { Text(stringResource(R.string.assistant_page_delete)) }) {
+                        Icon(
+                            imageVector = Lucide.Trash2,
+                            contentDescription = stringResource(R.string.assistant_page_delete),
+                            modifier = Modifier
+                                .onClick {
+                                    showDeleteDialog = true
+                                }
+                                .size(18.dp),
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.65f),
+                        )
                     }
-                ) {
+                }
+                Tooltip(tooltip = { Text(stringResource(R.string.assistant_page_clone)) }) {
                     Icon(
                         imageVector = Lucide.Copy,
                         contentDescription = stringResource(R.string.assistant_page_clone),
                         modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(18.dp)
+                            .onClick {
+                                onCopy()
+                            }
+                            .size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)
                     )
-                    Text(stringResource(R.string.assistant_page_clone))
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Button(
-                    onClick = {
-                        onEdit()
-                    },
-                ) {
-                    Icon(
-                        Lucide.Pencil,
-                        stringResource(R.string.edit),
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(18.dp)
-                    )
-                    Text(stringResource(R.string.edit))
                 }
             }
         }
