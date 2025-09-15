@@ -15,6 +15,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -174,18 +176,6 @@ class ChatService(
         appScope.launch {
             delay(500)
             checkAllConversationsReferences()
-        }
-    }
-
-    private inline fun withConversationReferences(conversationId: Uuid, action: () -> Unit) {
-        try {
-            this.addConversationReference(conversationId)
-            action()
-        } catch (e: Exception) {
-            Logging.log(TAG, "withConversationReferences: $e")
-            throw e
-        } finally {
-            this.removeConversationReference(conversationId)
         }
     }
 
@@ -443,21 +433,21 @@ class ChatService(
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
             saveConversation(conversationId, finalConversation)
+
+            addConversationReference(conversationId) // 添加引用
             appScope.launch {
-                withConversationReferences(conversationId) {
-                    generateTitle(conversationId, finalConversation)
+                coroutineScope {
+                    launch { generateTitle(conversationId, finalConversation) }
+                    launch { generateSuggestion(conversationId, finalConversation) }
                 }
-            }
-            appScope.launch {
-                withConversationReferences(conversationId) {
-                    generateSuggestion(conversationId, finalConversation)
-                }
+            }.invokeOnCompletion {
+                removeConversationReference(conversationId) // 移除引用
             }
         }
     }
 
     // 创建搜索工具
-    private suspend fun createSearchTool(settings: Settings): Tool {
+    private fun createSearchTool(settings: Settings): Tool {
         return Tool(
             name = "search_web",
             description = "search web for latest information",
@@ -491,44 +481,55 @@ class ChatService(
                         JsonObject(map)
                     }
                 results
-            }, systemPrompt = { model ->
+            }, systemPrompt = { model, messages ->
                 if (model.tools.isNotEmpty()) return@Tool ""
-                """
-                ## tool: search_web
+                val hasToolCall =
+                    messages.any { it.getToolCalls().any { toolCall -> toolCall.toolName == "search_web" } }
+                val prompt = StringBuilder()
+                prompt.append(
+                    """
+                    ## tool: search_web
 
-                ### when
-                - You can use the search_web tool to search the internet for the latest news or to confirm some facts.
-                - You can perform multiple search if needed
-                - Generate keywords based on the user's question
-                - Today is {{cur_date}}
-
-                ### result example
-                ```json
-                {
-                    "items": [
+                    ### usage
+                    - You can use the search_web tool to search the internet for the latest news or to confirm some facts.
+                    - You can perform multiple search if needed
+                    - Generate keywords based on the user's question
+                    - Today is {{cur_date}}
+                    """.trimIndent()
+                )
+                if (hasToolCall) {
+                    prompt.append(
+                        """
+                        ### result example
+                        ```json
                         {
-                            "id": "random id in 6 characters",
-                            "title": "Title",
-                            "url": "https://example.com",
-                            "text": "Some relevant snippets"
+                            "items": [
+                                {
+                                    "id": "random id in 6 characters",
+                                    "title": "Title",
+                                    "url": "https://example.com",
+                                    "text": "Some relevant snippets"
+                                }
+                            ]
                         }
-                    ]
+                        ```
+
+                        ### citation
+                        After using the search tool, when replying to users, you need to add a reference format to the referenced search terms in the content.
+                        When citing facts or data from search results, you need to add a citation marker after the sentence: `[citation,domain](id of the search result)`.
+
+                        For example:
+                        ```
+                        The capital of France is Paris. [citation,example.com](id of the search result)
+
+                        The population of Paris is about 2.1 million. [citation,example.com](id of the search result) [citation,example2.com](id of the search result)
+                        ```
+
+                        If no search results are cited, you do not need to add a citation marker.
+                        """.trimIndent()
+                    )
                 }
-                ```
-
-                ### citation
-                After using the search tool, when replying to users, you need to add a reference format to the referenced search terms in the content.
-                When citing facts or data from search results, you need to add a citation marker after the sentence: `[citation,domain](id of the search result)`.
-
-                For example:
-                ```
-                The capital of France is Paris. [citation,example.com](id of the search result)
-
-                The population of Paris is about 2.1 million. [citation,example.com](id of the search result) [citation,example2.com](id of the search result)
-                ```
-
-                If no search results are cited, you do not need to add a citation marker.
-                """.trimIndent()
+                prompt.toString()
             }
         )
     }
