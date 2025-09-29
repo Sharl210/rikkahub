@@ -21,6 +21,8 @@ interface SearchService<T : SearchServiceOptions> {
 
     val parameters: InputSchema?
 
+    val scrapingParameters: InputSchema?
+
     @Composable
     fun Description()
 
@@ -29,6 +31,12 @@ interface SearchService<T : SearchServiceOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: T
     ): Result<SearchResult>
+
+    suspend fun scrape(
+        params: JsonObject,
+        commonOptions: SearchCommonOptions,
+        serviceOptions: T
+    ): Result<ScrapedResult>
 
     companion object {
         @Suppress("UNCHECKED_CAST")
@@ -44,11 +52,15 @@ interface SearchService<T : SearchServiceOptions> {
                 is SearchServiceOptions.MetasoOptions -> MetasoSearchService
                 is SearchServiceOptions.OllamaOptions -> OllamaSearchService
                 is SearchServiceOptions.PerplexityOptions -> PerplexitySearchService
+                is SearchServiceOptions.FirecrawlOptions -> FirecrawlSearchService
             } as SearchService<T>
         }
 
         internal val httpClient by lazy {
             OkHttpClient.Builder()
+                .retryOnConnectionFailure(true)
+                .followRedirects(true)
+                .followSslRedirects(true)
                 .build()
         }
 
@@ -80,6 +92,19 @@ data class SearchResult(
 }
 
 @Serializable
+data class ScrapedResult(
+    val content: String,
+    val metadata: ScrapedResultMetadata? = null,
+)
+
+@Serializable
+data class ScrapedResultMetadata(
+    val title: String? = null,
+    val description: String? = null,
+    val language: String? = null,
+)
+
+@Serializable
 sealed class SearchServiceOptions {
     abstract val id: Uuid
 
@@ -97,6 +122,7 @@ sealed class SearchServiceOptions {
             MetasoOptions::class to "秘塔",
             OllamaOptions::class to "Ollama",
             PerplexityOptions::class to "Perplexity",
+            FirecrawlOptions::class to "Firecrawl",
         )
     }
 
@@ -174,6 +200,13 @@ sealed class SearchServiceOptions {
         override val id: Uuid = Uuid.random(),
         val apiKey: String = "",
         val maxTokensPerPage: Int? = 1024,
+    ) : SearchServiceOptions()
+
+    @Serializable
+    @SerialName("firecrawl")
+    data class FirecrawlOptions(
+        override val id: Uuid = Uuid.random(),
+        val apiKey: String = "",
     ) : SearchServiceOptions()
 }
 
