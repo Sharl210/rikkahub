@@ -61,6 +61,7 @@ import me.rerere.rikkahub.ui.pages.developer.DeveloperPage
 import me.rerere.rikkahub.ui.pages.history.HistoryPage
 import me.rerere.rikkahub.ui.pages.imggen.ImageGenPage
 import me.rerere.rikkahub.ui.pages.menu.MenuPage
+import me.rerere.rikkahub.ui.pages.prompts.PromptPage
 import me.rerere.rikkahub.ui.pages.setting.SettingAboutPage
 import me.rerere.rikkahub.ui.pages.setting.SettingDisplayPage
 import me.rerere.rikkahub.ui.pages.setting.SettingDonatePage
@@ -124,14 +125,22 @@ class RouteActivity : ComponentActivity() {
                 action = intent?.action
                 putExtra(Intent.EXTRA_TEXT, intent?.getStringExtra(Intent.EXTRA_TEXT))
                 putExtra(Intent.EXTRA_STREAM, intent?.getStringExtra(Intent.EXTRA_STREAM))
+                putExtra(Intent.EXTRA_PROCESS_TEXT, intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT))
             }
         }
 
         LaunchedEffect(navBackStack) {
-            if (shareIntent.action == Intent.ACTION_SEND) {
-                val text = shareIntent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
-                val imageUri = shareIntent.getStringExtra(Intent.EXTRA_STREAM)
-                navBackStack.navigate(Screen.ShareHandler(text, imageUri))
+            when (shareIntent.action) {
+                Intent.ACTION_SEND -> {
+                    val text = shareIntent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
+                    val imageUri = shareIntent.getStringExtra(Intent.EXTRA_STREAM)
+                    navBackStack.navigate(Screen.ShareHandler(text, imageUri))
+                }
+
+                Intent.ACTION_PROCESS_TEXT -> {
+                    val text = shareIntent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString() ?: ""
+                    navBackStack.navigate(Screen.ShareHandler(text, null))
+                }
             }
         }
     }
@@ -293,6 +302,10 @@ class RouteActivity : ComponentActivity() {
                     composable<Screen.Debug> {
                         DebugPage()
                     }
+
+                    composable<Screen.Prompts> {
+                        PromptPage()
+                    }
                 }
             }
         }
@@ -365,4 +378,7 @@ sealed interface Screen {
 
     @Serializable
     data object Debug : Screen
+
+    @Serializable
+    data object Prompts : Screen
 }

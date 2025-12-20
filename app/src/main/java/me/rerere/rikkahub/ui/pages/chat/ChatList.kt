@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtLeast
+import androidx.compose.ui.zIndex
 import com.composables.icons.lucide.Check
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronUp
@@ -195,10 +196,33 @@ private fun SharedTransitionScope.ChatListNormal(
     // 自动跟随键盘滚动
     ImeLazyListAutoScroller(lazyListState = state)
 
+    // 对话大小警告对话框
+    val sizeInfo = rememberConversationSizeInfo(conversation)
+    var showSizeWarningDialog by remember { mutableStateOf(true) }
+    if (sizeInfo.showWarning && showSizeWarningDialog) {
+        ConversationSizeWarningDialog(
+            sizeInfo = sizeInfo,
+            onDismiss = { showSizeWarningDialog = false }
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize(),
     ) {
+        // 欢迎界面 - 当对话为空时显示
+        AnimatedVisibility(
+            visible = conversation.newConversation && conversation.messageNodes.isEmpty(),
+            modifier = Modifier.padding(innerPadding).zIndex(5f),
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut(),
+        ) {
+            ChatWelcome(
+                modifier = Modifier,
+                onClickSuggestion = onClickSuggestion
+            )
+        }
+
         // 自动滚动到底部
         LaunchedEffect(state) {
             snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
@@ -568,7 +592,8 @@ private fun SharedTransitionScope.ChatListPreview(
                 val isUser = message.role == me.rerere.ai.core.MessageRole.USER
                 val originalIndex = conversation.messageNodes.indexOf(node)
                 Column(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
                         .then(
                             if (!isUser) Modifier.padding(end = 24.dp) else Modifier
                         ),
@@ -670,7 +695,7 @@ private fun BoxScope.MessageJumper(
             Surface(
                 onClick = {
                     scope.launch {
-                        state.animateScrollToItem(0)
+                        state.scrollToItem(0)
                     }
                 },
                 shape = CircleShape,
@@ -730,7 +755,7 @@ private fun BoxScope.MessageJumper(
             Surface(
                 onClick = {
                     scope.launch {
-                        state.animateScrollToItem(state.layoutInfo.totalItemsCount - 1)
+                        state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }
                 },
                 shape = CircleShape,
