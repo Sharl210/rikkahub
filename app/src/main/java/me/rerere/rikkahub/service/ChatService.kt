@@ -485,6 +485,7 @@ class ChatService(
                                 name = "mcp__" + tool.name,
                                 description = tool.description ?: "",
                                 parameters = { tool.inputSchema },
+                                needsApproval = tool.needsApproval,
                                 execute = {
                                     mcpManager.callTool(tool.name, it.jsonObject)
                                 },
