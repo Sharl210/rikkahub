@@ -472,7 +472,11 @@ class ChatService(
                     }
                 },
                 assistant = settings.getCurrentAssistant(),
-                memories = memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString()),
+                memories = if (settings.getCurrentAssistant().useGlobalMemory) {
+                    memoryRepository.getGlobalMemories()
+                } else {
+                    memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
+                },
                 inputTransformers = buildList {
                     addAll(inputTransformers)
                     add(templateTransformer)
@@ -769,6 +773,7 @@ class ChatService(
             }
         }.onFailure {
             it.printStackTrace()
+            addError(it)
         }
     }
 
