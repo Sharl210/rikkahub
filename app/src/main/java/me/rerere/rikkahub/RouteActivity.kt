@@ -79,10 +79,10 @@ import me.rerere.rikkahub.ui.pages.backup.BackupPage
 import me.rerere.rikkahub.ui.pages.chat.ChatPage
 import me.rerere.rikkahub.ui.pages.debug.DebugPage
 import me.rerere.rikkahub.ui.pages.developer.DeveloperPage
+import me.rerere.rikkahub.ui.pages.favorite.FavoritePage
 import me.rerere.rikkahub.ui.pages.history.HistoryPage
 import me.rerere.rikkahub.ui.pages.imggen.ImageGenPage
 import me.rerere.rikkahub.ui.pages.log.LogPage
-import me.rerere.rikkahub.ui.pages.menu.MenuPage
 import me.rerere.rikkahub.ui.pages.prompts.PromptPage
 import me.rerere.rikkahub.ui.pages.setting.SettingAboutPage
 import me.rerere.rikkahub.ui.pages.setting.SettingDisplayPage
@@ -252,6 +252,10 @@ class RouteActivity : ComponentActivity() {
                         HistoryPage()
                     }
 
+                        composable<Screen.Favorite> {
+                            FavoritePage()
+                        }
+
                     composableWrapper<Screen.Assistant> {
                         AssistantPage()
                     }
@@ -294,10 +298,6 @@ class RouteActivity : ComponentActivity() {
                     composable<Screen.AssistantInjections> { backStackEntry ->
                         val route = backStackEntry.toRoute<Screen.AssistantInjections>()
                         AssistantInjectionsPage(route.id)
-                    }
-
-                    composable<Screen.Menu> {
-                        MenuPage()
                     }
 
                     composable<Screen.Translator> {
@@ -452,6 +452,9 @@ sealed interface Screen {
     data object History : Screen
 
     @Serializable
+    data object Favorite : Screen
+
+    @Serializable
     data object Assistant : Screen
 
     @Serializable
@@ -477,9 +480,6 @@ sealed interface Screen {
 
     @Serializable
     data class AssistantInjections(val id: String) : Screen
-
-    @Serializable
-    data object Menu : Screen
 
     @Serializable
     data object Translator : Screen
