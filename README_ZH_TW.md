@@ -12,9 +12,7 @@
 
 <div align="center">
   <img src="docs/img/chat.png" alt="Chat Interface" width="150" />
-  <img src="docs/img/models.png" alt="Models Picker" width="150" />
-  <img src="docs/img/providers.png" alt="Providers" width="150" />
-  <img src="docs/img/assistants.png" alt="Assistants" width="150" />
+  <img src="docs/img/desktop.png" alt="Models Picker" width="450" />
 </div>
 
 ## 🚀 下載
@@ -29,16 +27,12 @@
   <p style="font-size: 16px; font-weight: bold;">Aihubmix</p>
   <p style="font-size: 14px;">感謝 <a href="https://aihubmix.com?aff=pG7r">aihubmix.com</a> 的資金支持。我們推薦使用 aihubmix 作為全球主流模型的一站式服務平台。（OpenAI、Claude、Google Gemini、DeepSeek、Qwen 以及數百種其他模型）。</p>
 </div>
-<div align="center">
-  <img src="app/src/main/assets/icons/siliconflow.svg" alt="SiliconFlow" width="50" />
-  <p style="font-size: 16px; font-weight: bold;">SiliconFlow</p>
-  <p style="font-size: 14px;">感謝 <a href="https://siliconflow.cn/">siliconflow.cn</a> 與我們合作提供免費模型。</p>
-</div>
 
 ## ✨ 功能特色
 
 - 🎨 現代化安卓APP設計（Material You / 預測性返回）
 - 🌙 暗色模式
+- 🖥️ Web多端訪問支持
 - 🛠️ MCP 支持
 - 🔄 多種類型的供應商支持，自定義 API / URL / 模型（目前支持 OpenAI、Google、Anthropic）
 - 🖼️ 多模態輸入支持
