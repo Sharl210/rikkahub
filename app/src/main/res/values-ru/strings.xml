@@ -983,5 +983,6 @@
   <string name="setting_provider_page_claude_prompt_cache_ttl_1h">1 час</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl_5m">5 минут</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">TTL кэша промпта</string>
+  <string name="assistant_page_temperature_warning">Обычно 1. Для моделей рассуждения изменение не рекомендуется.</string>
 </resources>
 
