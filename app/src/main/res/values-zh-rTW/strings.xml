@@ -1021,5 +1021,11 @@
   <string name="setting_asr_configure_resource_id_desc">計費用的 X-Api-Resource-Id</string>
   <string name="assistant_page_message_template_missing_message">範本未包含 {{ message }}，使用者訊息將不會被傳送</string>
   <string name="extension_content_manage">管理</string>
+  <string name="assistant_page_allow_conversation_system_prompt">獨立對話系統提示</string>
+  <string name="assistant_page_allow_conversation_system_prompt_desc">允許每個對話單獨設定系統提示詞</string>
+  <string name="chat_page_conversation_system_prompt">對話系統提示</string>
+  <string name="chat_page_conversation_system_prompt_hint">覆蓋此對話的助理系統提示</string>
+  <string name="chat_page_conversation_system_prompt_clear">清除</string>
+  <string name="chat_page_conversation_system_prompt_save">儲存</string>
 </resources>
 
