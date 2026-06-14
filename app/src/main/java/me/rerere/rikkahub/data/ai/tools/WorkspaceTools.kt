@@ -1,8 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools
 
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.add
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.jsonObject
@@ -13,22 +11,23 @@ import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.DiffMetadata
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.toMetadata
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.utils.generateUnifiedDiff
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceStorageArea
+import org.koin.java.KoinJavaComponent.getKoin
+import java.io.ByteArrayOutputStream
 
 private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
-private const val LIST_MAX_ENTRIES = 500
+private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
-    "workspace_list_files" to false,
     "workspace_read_file" to false,
     "workspace_write_file" to false,
     "workspace_edit_file" to false,
-    "workspace_delete_file" to true,
-    "workspace_move_file" to true,
     "workspace_shell" to true,
 )
 
@@ -47,60 +46,17 @@ suspend fun createWorkspaceTools(
     val shellCwd = cwd?.removePrefix("/workspace/")?.removePrefix("/workspace")
 
     return listOf(
-        createListFilesTool(workspaceId, ::needsApproval, workspaceRepository),
         createReadFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
-        createDeleteFileTool(workspaceId, ::needsApproval, workspaceRepository),
-        createMoveFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
     )
 }
 
-private fun createListFilesTool(
-    workspaceId: String,
-    needsApproval: (String) -> Boolean,
-    workspaceRepository: WorkspaceRepository,
-) = Tool(
-    name = "workspace_list_files",
-    description = """
-        List files using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
-        Use /workspace for the workspace files area. Response format: entries[].path, name, isDirectory, sizeBytes, updatedAt.
-    """.trimIndent().replace("\n", " "),
-    parameters = {
-        InputSchema.Obj(
-            properties = buildJsonObject {
-                putPathProperty(required = true)
-            },
-            required = listOf("path"),
-        )
-    },
-    needsApproval = { needsApproval("workspace_list_files") },
-    execute = {
-        val params = it.jsonObject
-        val path = params.absolutePath("path")
-        val entries = workspaceRepository.listFilesInRootfs(workspaceId, path)
-        listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("entries", buildJsonArray {
-                        entries.forEach { entry ->
-                            add(
-                                buildJsonObject {
-                                    put("path", entry.path)
-                                    put("name", entry.name)
-                                    put("isDirectory", entry.isDirectory)
-                                    put("sizeBytes", entry.sizeBytes)
-                                    put("updatedAt", entry.updatedAt)
-                                }
-                            )
-                        }
-                    })
-                }.toString()
-            )
-        )
-    },
-)
+private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg")
+
+private fun String.isImagePath(): Boolean =
+    substringAfterLast('.', "").lowercase() in IMAGE_EXTENSIONS
 
 private fun createReadFileTool(
     workspaceId: String,
@@ -109,8 +65,9 @@ private fun createReadFileTool(
 ) = Tool(
     name = "workspace_read_file",
     description = """
-        Read a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
+        Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
+        Supports UTF-8 text files and image files (png, jpg, jpeg, gif, webp, bmp).
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -123,15 +80,19 @@ private fun createReadFileTool(
     needsApproval = { needsApproval("workspace_read_file") },
     execute = {
         val path = it.jsonObject.absolutePath("path")
-        val text = workspaceRepository.readTextInRootfs(workspaceId, path)
-        listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("path", path)
-                    put("text", text)
-                }.toString()
+        if (path.isImagePath()) {
+            workspaceRepository.readImageInRootfs(workspaceId, path)
+        } else {
+            val text = workspaceRepository.readTextInRootfs(workspaceId, path)
+            listOf(
+                UIMessagePart.Text(
+                    buildJsonObject {
+                        put("path", path)
+                        put("text", text)
+                    }.toString()
+                )
             )
-        )
+        }
     },
 )
 
@@ -238,89 +199,6 @@ private fun createEditFileTool(
     },
 )
 
-private fun createDeleteFileTool(
-    workspaceId: String,
-    needsApproval: (String) -> Boolean,
-    workspaceRepository: WorkspaceRepository,
-) = Tool(
-    name = "workspace_delete_file",
-    description = """
-        Delete a file or directory using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
-        Use /workspace for the workspace files area. Use recursive=true for directories.
-    """.trimIndent().replace("\n", " "),
-    parameters = {
-        InputSchema.Obj(
-            properties = buildJsonObject {
-                putPathProperty(required = true)
-                put("recursive", buildJsonObject {
-                    put("type", "boolean")
-                    put("description", "Required when deleting a directory. Defaults to false.")
-                })
-            },
-            required = listOf("path"),
-        )
-    },
-    needsApproval = { needsApproval("workspace_delete_file") || it.pathOutsideWorkspace("path") },
-    execute = {
-        val params = it.jsonObject
-        val path = params.absolutePath("path")
-        val recursive = params["recursive"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
-        val deleted = workspaceRepository.deletePathInRootfs(workspaceId, path, recursive)
-        listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("success", deleted)
-                    put("path", path)
-                }.toString()
-            )
-        )
-    },
-)
-
-private fun createMoveFileTool(
-    workspaceId: String,
-    needsApproval: (String) -> Boolean,
-    workspaceRepository: WorkspaceRepository,
-) = Tool(
-    name = "workspace_move_file",
-    description = """
-        Move or rename a file or directory using the assistant's bound workspace Rootfs.
-        Source and target paths must be absolute inside Rootfs. Use /workspace for the workspace files area.
-    """.trimIndent().replace("\n", " "),
-    parameters = {
-        InputSchema.Obj(
-            properties = buildJsonObject {
-                put("source", buildJsonObject {
-                    put("type", "string")
-                    put("description", "Absolute source path inside Rootfs, for example /workspace/src.txt")
-                })
-                put("target", buildJsonObject {
-                    put("type", "string")
-                    put("description", "Absolute target path inside Rootfs, for example /workspace/dst.txt")
-                })
-                put("overwrite", buildJsonObject {
-                    put("type", "boolean")
-                    put("description", "Whether to overwrite the target if it exists. Defaults to false.")
-                })
-            },
-            required = listOf("source", "target"),
-        )
-    },
-    needsApproval = {
-        needsApproval("workspace_move_file") ||
-            it.pathOutsideWorkspace("source") ||
-            it.pathOutsideWorkspace("target")
-    },
-    execute = {
-        val params = it.jsonObject
-        val source = params.absolutePath("source")
-        val target = params.absolutePath("target")
-        val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
-        val entry = workspaceRepository.movePathInRootfs(workspaceId, source, target, overwrite)
-        listOf(UIMessagePart.Text(entry.toJson().toString()))
-    },
-)
-
 private fun createShellTool(
     workspaceId: String,
     needsApproval: (String) -> Boolean,
@@ -393,59 +271,49 @@ private fun createShellTool(
 private fun kotlinx.serialization.json.JsonObject.string(name: String): String? =
     this[name]?.jsonPrimitive?.contentOrNull
 
-private suspend fun WorkspaceRepository.listFilesInRootfs(
-    workspaceId: String,
-    path: String,
-): List<WorkspaceFileEntry> {
-    val pathArg = path.shellQuote()
-    val result = runRootfsCommand(
-        workspaceId = workspaceId,
-        action = "List files",
-        command = """
-            if [ ! -e $pathArg ]; then
-              printf '%s\n' ${"Path does not exist: $path".shellQuote()} >&2
-              exit 1
-            fi
-            if [ ! -d $pathArg ]; then
-              printf '%s\n' ${"Path is not a directory: $path".shellQuote()} >&2
-              exit 1
-            fi
-            count=0
-            while IFS= read -r -d '' child; do
-              if [ -d "${'$'}child" ]; then entry_type=d; else entry_type=f; fi
-              entry_size=${'$'}(stat -c '%s' -- "${'$'}child") || exit 1
-              entry_mtime=${'$'}(stat -c '%Y' -- "${'$'}child") || exit 1
-              printf '%s\0%s\0%s\0%s\0' "${'$'}entry_type" "${'$'}entry_size" "${'$'}entry_mtime" "${'$'}child"
-              count=${'$'}((count + 1))
-              if [ "${'$'}count" -ge $LIST_MAX_ENTRIES ]; then break; fi
-            done < <(find $pathArg -mindepth 1 -maxdepth 1 -print0)
-        """.trimIndent(),
-    )
-    return result.stdout.parseRootfsEntries()
-        .sortedWith(compareBy<WorkspaceFileEntry> { !it.isDirectory }.thenBy { it.name.lowercase() })
-}
-
 private suspend fun WorkspaceRepository.readTextInRootfs(
     workspaceId: String,
     path: String,
 ): String {
-    val pathArg = path.shellQuote()
-    val result = runRootfsCommand(
-        workspaceId = workspaceId,
-        action = "Read file",
-        command = """
-            if [ ! -e $pathArg ]; then
-              printf '%s\n' ${"File does not exist: $path".shellQuote()} >&2
-              exit 1
-            fi
-            if [ ! -f $pathArg ]; then
-              printf '%s\n' ${"Path is not a file: $path".shellQuote()} >&2
-              exit 1
-            fi
-            cat -- $pathArg
-        """.trimIndent(),
+    val (area, relativePath) = rootfsPathToAreaAndRelative(path)
+    val size = fileSize(workspaceId, area, relativePath)
+    require(size <= MAX_READ_FILE_BYTES) {
+        "File is too large to read: $path (${size / 1024 / 1024}MB, max ${MAX_READ_FILE_BYTES / 1024 / 1024}MB). Use shell commands like head, tail, or grep to read parts of it."
+    }
+    val buffer = ByteArrayOutputStream(size.toInt())
+    exportFile(workspaceId, area, relativePath, buffer)
+    return buffer.toString(Charsets.UTF_8.name())
+}
+
+private fun rootfsPathToAreaAndRelative(path: String): Pair<WorkspaceStorageArea, String> {
+    val trimmed = path.trimEnd('/')
+    return if (trimmed == "/workspace" || trimmed.startsWith("/workspace/")) {
+        WorkspaceStorageArea.FILES to trimmed.removePrefix("/workspace").trimStart('/')
+    } else {
+        WorkspaceStorageArea.LINUX to trimmed.trimStart('/')
+    }
+}
+
+private suspend fun WorkspaceRepository.readImageInRootfs(
+    workspaceId: String,
+    path: String,
+): List<UIMessagePart> {
+    val (area, relativePath) = rootfsPathToAreaAndRelative(path)
+    val buffer = ByteArrayOutputStream()
+    exportFile(workspaceId, area, relativePath, buffer)
+    val bytes = buffer.toByteArray()
+
+    val filesManager = getKoin().get<FilesManager>()
+    val uris = filesManager.createChatFilesByByteArrays(listOf(bytes))
+    return listOf(
+        UIMessagePart.Image(url = uris.first().toString()),
+        UIMessagePart.Text(
+            buildJsonObject {
+                put("path", path)
+                put("description", "Image file read successfully")
+            }.toString()
+        ),
     )
-    return result.stdout
 }
 
 private suspend fun WorkspaceRepository.writeTextInRootfs(
@@ -473,67 +341,6 @@ private suspend fun WorkspaceRepository.writeTextInRootfs(
             ${statEntryCommand(path)}
         """.trimIndent(),
         stdin = text.toByteArray(Charsets.UTF_8),
-    )
-    return result.stdout.parseRootfsEntry()
-}
-
-private suspend fun WorkspaceRepository.deletePathInRootfs(
-    workspaceId: String,
-    path: String,
-    recursive: Boolean,
-): Boolean {
-    requireMutableRootfsPath(path, "delete")
-    val pathArg = path.shellQuote()
-    val removeCommand = if (recursive) "rm -rf -- $pathArg" else "rm -- $pathArg"
-    val result = runRootfsCommand(
-        workspaceId = workspaceId,
-        action = "Delete file",
-        command = """
-            if [ ! -e $pathArg ] && [ ! -L $pathArg ]; then
-              printf 'false'
-              exit 0
-            fi
-            if [ -d $pathArg ] && [ ${recursive.shellFlag()} = 0 ]; then
-              printf '%s\n' ${"Directory delete requires recursive = true: $path".shellQuote()} >&2
-              exit 1
-            fi
-            $removeCommand || exit 1
-            printf 'true'
-        """.trimIndent(),
-    )
-    return result.stdout.trim().toBooleanStrict()
-}
-
-private suspend fun WorkspaceRepository.movePathInRootfs(
-    workspaceId: String,
-    source: String,
-    target: String,
-    overwrite: Boolean,
-): WorkspaceFileEntry {
-    requireMutableRootfsPath(source, "move")
-    requireMutableRootfsPath(target, "move")
-    val sourceArg = source.shellQuote()
-    val targetArg = target.shellQuote()
-    val result = runRootfsCommand(
-        workspaceId = workspaceId,
-        action = "Move file",
-        command = """
-            if [ ! -e $sourceArg ] && [ ! -L $sourceArg ]; then
-              printf '%s\n' ${"Source does not exist: $source".shellQuote()} >&2
-              exit 1
-            fi
-            if [ -e $targetArg ] || [ -L $targetArg ]; then
-              if [ ${overwrite.shellFlag()} = 0 ]; then
-                printf '%s\n' ${"Target already exists: $target".shellQuote()} >&2
-                exit 1
-              fi
-              rm -rf -- $targetArg || exit 1
-            fi
-            target_parent=${'$'}(dirname -- $targetArg) || exit 1
-            mkdir -p -- "${'$'}target_parent" || exit 1
-            mv -- $sourceArg $targetArg || exit 1
-            ${statEntryCommand(target)}
-        """.trimIndent(),
     )
     return result.stdout.parseRootfsEntry()
 }
@@ -610,13 +417,6 @@ private fun kotlinx.serialization.json.JsonElement.pathOutsideWorkspace(name: St
 private fun String.isOutsideWorkspace(): Boolean {
     val normalized = trimEnd('/').ifBlank { "/" }
     return normalized != "/workspace" && !normalized.startsWith("/workspace/")
-}
-
-private fun requireMutableRootfsPath(path: String, action: String) {
-    val normalized = path.trimEnd('/').ifBlank { "/" }
-    require(normalized != "/" && normalized != "/workspace") {
-        "Refusing to $action protected root path: $path"
-    }
 }
 
 private fun String.rootfsName(): String =
