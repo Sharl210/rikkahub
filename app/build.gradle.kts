@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -84,16 +85,6 @@ android {
             applicationIdSuffix = ".debug"
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
-        }
-        create("baseline") {
-            initWith(getByName("release"))
-            matchingFallbacks.add("release")
-            signingConfig = signingConfigs.getByName("debug")
-            applicationIdSuffix = ".debug"
-            isDebuggable = false
-            isMinifyEnabled = false
-            isShrinkResources = false
-            isProfileable = true
         }
     }
     compileOptions {
@@ -248,6 +239,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.paging)
+    baselineProfile(project(":app:baselineprofile"))
     ksp(libs.androidx.room.compiler)
 
     // Paging3
