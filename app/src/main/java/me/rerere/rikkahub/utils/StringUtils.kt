@@ -45,12 +45,20 @@ fun String.applyPlaceholders(
 }
 
 fun Long.fileSizeToString(): String {
-    return when {
-        this < 1024 -> "$this B"
-        this < 1024 * 1024 -> "${this / 1024} KB"
-        this < 1024 * 1024 * 1024 -> "${this / (1024 * 1024)} MB"
-        else -> "${this / (1024 * 1024 * 1024)} GB"
+    if (this < 1024) return "$this B"
+    val units = arrayOf("KB", "MB", "GB", "TB")
+    var value = toDouble() / 1024.0
+    var unitIndex = 0
+    while (value >= 1024 && unitIndex < units.lastIndex) {
+        value /= 1024.0
+        unitIndex++
     }
+    val precision = when {
+        value >= 100 -> 0
+        value >= 10 -> 1
+        else -> 2
+    }
+    return "%.${precision}f %s".format(value, units[unitIndex])
 }
 
 fun Int.formatNumber(): String {
@@ -93,7 +101,7 @@ fun Double.toFixed(digits: Int = 0) = "%.${digits}f".format(this)
 
 /**
  * 提取字符串中所有引号内的内容
- * 支持多种引号类型：英文双引号 "..."、英文单引号 '...'、中文双引号 "..."、中文单引号 '...'
+ * 支持多种引号类型：英文双引号 "..."、英文单引号 '...'、中文双引号 "..."、中文单引号 '...'、直角引号「…」、白直角引号『…』
  * @return 所有引号内内容的列表
  */
 fun String.extractQuotedContent(): List<String> {
@@ -104,6 +112,8 @@ fun String.extractQuotedContent(): List<String> {
         "\u2018([^\u2019]*?)\u2019",  // 中文单引号
         """"([^"]*?)"""",  // 英文双引号
         """'([^']*?)'""",  // 英文单引号
+        """「([^」]*?)」""",           // 直角引号
+        """『([^』]*?)』""",           // 白直角引号
     )
     for (pattern in patterns) {
         val regex = Regex(pattern)
